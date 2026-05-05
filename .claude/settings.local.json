@@ -12,7 +12,8 @@
       "Bash(npx --yes shadcn@latest init --yes --base-color slate --no-src-dir)",
       "Bash(npx --yes shadcn@latest init --help)",
       "Bash(npx --yes shadcn@latest init --defaults --yes --silent)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(git add *)"
     ]
   }
 }
