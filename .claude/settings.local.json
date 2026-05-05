@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(npx --yes create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --turbopack --use-npm)",
+      "Bash(npx --yes create-next-app@latest _tmp_scaffold --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --turbopack --use-npm --skip-install)",
+      "Bash(npx --yes create-next-app@latest scaffold --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --turbopack --use-npm --skip-install)",
+      "Bash(shopt -s dotglob)",
+      "Bash(mv scaffold/* .)",
+      "Bash(rmdir scaffold *)",
+      "Bash(npm install *)",
+      "Bash(npx --yes shadcn@latest init --yes --base-color slate --no-src-dir)",
+      "Bash(npx --yes shadcn@latest init --help)",
+      "Bash(npx --yes shadcn@latest init --defaults --yes --silent)",
+      "Bash(node *)"
+    ]
+  }
+}
