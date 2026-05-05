@@ -1,13 +1,22 @@
 import { requireSession } from "@/lib/auth/get-current-org";
+import { Sidebar } from "@/components/layout/sidebar";
 
-// All routes inside (dashboard) require an authenticated session.
-// requireSession() calls redirect('/login') when the session is missing,
-// so unauthenticated requests are always sent to the login page.
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  await requireSession();
-  return <>{children}</>;
+  const session = await requireSession();
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar
+        orgName={session.organizationName}
+        fullName={session.fullName}
+        email={session.email}
+        role={session.role}
+      />
+      <main className="flex-1 overflow-y-auto bg-background">{children}</main>
+    </div>
+  );
 }

@@ -13,7 +13,10 @@
       "Bash(npx --yes shadcn@latest init --help)",
       "Bash(npx --yes shadcn@latest init --defaults --yes --silent)",
       "Bash(node *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m 'Remove middleware.ts — proxy.ts already handles session in Next.js 16 *)"
     ]
   }
 }
