@@ -73,12 +73,7 @@ export default async function DealDetailPage({
     .eq("deal_id", id)
     .maybeSingle();
 
-  const d = deal as typeof deal & {
-    platforms: { name: string } | null;
-    products: { name: string } | null;
-    closers: { name: string } | null;
-    sales_partners: { name: string } | null;
-  };
+  const d = deal;
   type InstallmentRow = { id: string; sequence: number; due_date: string; amount: number; paid: boolean };
 
   return (

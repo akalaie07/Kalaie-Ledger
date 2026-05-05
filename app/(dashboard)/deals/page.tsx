@@ -28,20 +28,7 @@ export default async function DealsPage() {
     .eq("organization_id", session.organizationId)
     .order("close_date", { ascending: false });
 
-  const rows = (deals ?? []) as Array<{
-    id: string;
-    customer_name: string;
-    total_price: number;
-    payment_type: "one_time" | "installments";
-    close_date: string;
-    inkasso_required: boolean;
-    onboarding_done: boolean;
-    order_id: string | null;
-    platforms: { name: string } | null;
-    products: { name: string } | null;
-    closers: { name: string } | null;
-    sales_partners: { name: string } | null;
-  }>;
+  const rows = deals ?? [];
 
   return (
     <div className="p-6 space-y-4">

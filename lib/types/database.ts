@@ -358,7 +358,50 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "deals_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "deals_platform_id_fkey";
+            columns: ["platform_id"];
+            isOneToOne: false;
+            referencedRelation: "platforms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "deals_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "deals_closer_id_fkey";
+            columns: ["closer_id"];
+            isOneToOne: false;
+            referencedRelation: "closers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "deals_sales_partner_id_fkey";
+            columns: ["sales_partner_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_partners";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "deals_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       installments: {
         Row: {
