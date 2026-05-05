@@ -79,6 +79,7 @@ export default async function DealDetailPage({
     closers: { name: string } | null;
     sales_partners: { name: string } | null;
   };
+  type InstallmentRow = { id: string; sequence: number; due_date: string; amount: number; paid: boolean };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
@@ -181,7 +182,7 @@ export default async function DealDetailPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {installments.map((r) => (
+              {(installments as InstallmentRow[]).map((r) => (
                 <tr key={r.id} className="hover:bg-muted/20">
                   <td className="px-4 py-2.5 text-muted-foreground">
                     {r.sequence}

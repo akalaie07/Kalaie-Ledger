@@ -294,6 +294,180 @@ export type Database = {
           },
         ];
       };
+      deals: {
+        Row: {
+          id: string;
+          organization_id: string;
+          customer_name: string;
+          platform_id: string | null;
+          payment_method: string | null;
+          product_id: string | null;
+          order_id: string | null;
+          sales_partner_id: string | null;
+          closer_id: string | null;
+          total_price: number;
+          payment_type: Database["public"]["Enums"]["payment_type_enum"];
+          close_date: string;
+          inkasso_required: boolean;
+          onboarding_done: boolean;
+          update_call_done: boolean;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          customer_name: string;
+          platform_id?: string | null;
+          payment_method?: string | null;
+          product_id?: string | null;
+          order_id?: string | null;
+          sales_partner_id?: string | null;
+          closer_id?: string | null;
+          total_price: number;
+          payment_type?: Database["public"]["Enums"]["payment_type_enum"];
+          close_date: string;
+          inkasso_required?: boolean;
+          onboarding_done?: boolean;
+          update_call_done?: boolean;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          customer_name?: string;
+          platform_id?: string | null;
+          payment_method?: string | null;
+          product_id?: string | null;
+          order_id?: string | null;
+          sales_partner_id?: string | null;
+          closer_id?: string | null;
+          total_price?: number;
+          payment_type?: Database["public"]["Enums"]["payment_type_enum"];
+          close_date?: string;
+          inkasso_required?: boolean;
+          onboarding_done?: boolean;
+          update_call_done?: boolean;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      installments: {
+        Row: {
+          id: string;
+          organization_id: string;
+          deal_id: string;
+          sequence: number;
+          due_date: string;
+          amount: number;
+          paid: boolean;
+          paid_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          deal_id: string;
+          sequence: number;
+          due_date: string;
+          amount: number;
+          paid?: boolean;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          deal_id?: string;
+          sequence?: number;
+          due_date?: string;
+          amount?: number;
+          paid?: boolean;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      one_time_payments: {
+        Row: {
+          deal_id: string;
+          organization_id: string;
+          paid: boolean;
+          paid_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          deal_id: string;
+          organization_id: string;
+          paid?: boolean;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          deal_id?: string;
+          organization_id?: string;
+          paid?: boolean;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inkasso_cases: {
+        Row: {
+          id: string;
+          organization_id: string;
+          deal_id: string;
+          sent_to_inkasso_at: string;
+          agency: string | null;
+          status: Database["public"]["Enums"]["inkasso_status_enum"];
+          recovered_amount: number | null;
+          closed_at: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          deal_id: string;
+          sent_to_inkasso_at?: string;
+          agency?: string | null;
+          status?: Database["public"]["Enums"]["inkasso_status_enum"];
+          recovered_amount?: number | null;
+          closed_at?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          deal_id?: string;
+          sent_to_inkasso_at?: string;
+          agency?: string | null;
+          status?: Database["public"]["Enums"]["inkasso_status_enum"];
+          recovered_amount?: number | null;
+          closed_at?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<
       string,
