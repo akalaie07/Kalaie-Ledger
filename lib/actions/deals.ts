@@ -40,7 +40,7 @@ const DealSchema = z.object({
   sales_partner_id: uuidOpt,
   closer_id: uuidOpt,
   total_price: z.coerce
-    .number({ invalid_type_error: "Ungültiger Betrag." })
+    .number()
     .min(0, "Muss ≥ 0 sein."),
   payment_type: z.enum(["one_time", "installments"]),
   close_date: z
