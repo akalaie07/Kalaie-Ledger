@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 
+import "@/lib/supabase/validate-env";
 import type { Database } from "@/lib/types/database";
 
 // Service-role client — bypasses RLS. Only used server-side for admin tasks
