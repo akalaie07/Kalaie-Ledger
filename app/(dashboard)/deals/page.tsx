@@ -6,7 +6,7 @@ import { de } from "date-fns/locale";
 
 import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
@@ -52,12 +52,10 @@ export default async function DealsPage() {
             {rows.length} {rows.length === 1 ? "Eintrag" : "Einträge"}
           </p>
         </div>
-        <Button asChild size="sm">
-          <Link href="/deals/new">
-            <Plus className="mr-1.5 h-4 w-4" />
-            Neuer Deal
-          </Link>
-        </Button>
+        <Link href="/deals/new" className={buttonVariants({ size: "sm" })}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          Neuer Deal
+        </Link>
       </div>
 
       <div className="rounded-lg border border-border overflow-hidden">

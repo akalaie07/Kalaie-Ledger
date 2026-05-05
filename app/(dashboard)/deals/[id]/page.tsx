@@ -7,7 +7,7 @@ import { de } from "date-fns/locale";
 
 import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Deal — Buchhaltung" };
@@ -99,12 +99,13 @@ export default async function DealDetailPage({
             </p>
           )}
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/deals/${id}/edit`}>
-            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-            Bearbeiten
-          </Link>
-        </Button>
+        <Link
+          href={`/deals/${id}/edit`}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+        >
+          <Pencil className="mr-1.5 h-3.5 w-3.5" />
+          Bearbeiten
+        </Link>
       </div>
 
       <div className="rounded-lg border border-border p-4 space-y-0">
