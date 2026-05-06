@@ -5,6 +5,7 @@ import { de } from "date-fns/locale";
 import { requireRole } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { InviteForm } from "./_components/invite-form";
 
 export const metadata: Metadata = { title: "Benutzerverwaltung — Buchhaltung" };
 
@@ -127,10 +128,11 @@ export default async function BenutzerPage() {
         </section>
       )}
 
-      <div className="rounded-lg border border-border bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
-        Neue Mitglieder können per Einladungslink hinzugefügt werden.
-        Erstelle einen Einladungslink über die Stammdaten-Seite (Closers/Vertriebspartner) oder kontaktiere den Support.
-      </div>
+      {/* Invite form */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Neuen Benutzer einladen</h2>
+        <InviteForm />
+      </section>
     </div>
   );
 }
