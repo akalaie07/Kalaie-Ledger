@@ -3,10 +3,41 @@
 import { useActionState } from "react";
 import Link from "next/link";
 
-import { signIn, type AuthFormState } from "@/lib/actions/auth";
+import { signIn, resendConfirmationEmail, type AuthFormState } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+function ResendConfirmationForm({ email }: { email: string }) {
+  const [state, action, pending] = useActionState<AuthFormState, FormData>(
+    resendConfirmationEmail,
+    null,
+  );
+
+  if (state?.message) {
+    return (
+      <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+        {state.message}
+      </div>
+    );
+  }
+
+  return (
+    <form action={action} className="mt-2">
+      <input type="hidden" name="email" value={email} />
+      {state?.error && (
+        <p className="mb-2 text-xs text-destructive">{state.error}</p>
+      )}
+      <button
+        type="submit"
+        disabled={pending}
+        className="text-sm text-foreground underline underline-offset-4 hover:no-underline disabled:opacity-50"
+      >
+        {pending ? "Sende…" : "Bestätigungs-E-Mail erneut senden"}
+      </button>
+    </form>
+  );
+}
 
 export function LoginForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState<AuthFormState, FormData>(
@@ -19,9 +50,12 @@ export function LoginForm({ next }: { next?: string }) {
       {next && <input type="hidden" name="next" value={next} />}
 
       {state?.error && (
-        <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {state.error}
-        </p>
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p>{state.error}</p>
+          {state.needsEmailConfirmation && state.unconfirmedEmail && (
+            <ResendConfirmationForm email={state.unconfirmedEmail} />
+          )}
+        </div>
       )}
 
       <div className="space-y-1.5">

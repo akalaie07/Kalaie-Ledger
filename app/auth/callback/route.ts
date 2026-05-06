@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     if (!error) {
       // Validate the redirect target to prevent open redirects.
       const safeNext =
-        next.startsWith("/") && !next.startsWith("//") ? next : "/";
+        next.startsWith("/") && !next.startsWith("//") ? next : "/deals";
       return NextResponse.redirect(`${origin}${safeNext}`);
     }
   }

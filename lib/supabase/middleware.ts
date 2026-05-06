@@ -64,7 +64,7 @@ export async function updateSession(request: NextRequest) {
 
   if (user && isAuthOnly(pathname)) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/deals";
     url.search = "";
     return NextResponse.redirect(url);
   }

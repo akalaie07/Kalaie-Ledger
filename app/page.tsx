@@ -15,10 +15,11 @@ export default async function RootPage() {
 
   const session = await getCurrentSession();
   if (!session) {
-    // Auth session exists but no app profile found — sign out to clear the
-    // stale cookie so the proxy no longer treats this request as authenticated,
-    // breaking the otherwise infinite /login → / → /login redirect loop.
-    await supabase.auth.signOut();
+    // Auth session exists but no app profile found yet (e.g. trigger still
+    // running, or new signup flow). Do NOT sign out here — signing out would
+    // clear the valid Supabase session and force the user back to login,
+    // creating an endless /login → / → /login loop. Just redirect to login
+    // so the user can choose what to do.
     redirect("/login");
   }
 

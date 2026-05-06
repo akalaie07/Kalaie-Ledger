@@ -9,6 +9,10 @@ export type AuthFormState = {
   error?: string;
   fieldErrors?: Partial<Record<string, string[]>>;
   message?: string;
+  /** true when the login failed because the email is not confirmed yet */
+  needsEmailConfirmation?: boolean;
+  /** the email that needs confirmation — so the resend action can use it */
+  unconfirmedEmail?: string;
 } | null;
 
 // ---------------------------------------------------------------------------
@@ -51,7 +55,7 @@ const InviteSignupSchema = z.object({
 // ---------------------------------------------------------------------------
 
 function safeRedirectPath(next: string | null | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/deals";
   return next;
 }
 
@@ -85,9 +89,11 @@ export async function signIn(
       return {
         error:
           "Deine E-Mail-Adresse wurde noch nicht bestätigt. Bitte überprüfe dein Postfach.",
+        needsEmailConfirmation: true,
+        unconfirmedEmail: email,
       };
     }
-    return { error: "E-Mail oder Passwort falsch." };
+    return { error: "E-Mail oder Passwort falsch. Bitte erneut versuchen." };
   }
 
   redirect(safeRedirectPath(next));
@@ -132,7 +138,7 @@ export async function signUp(
     };
   }
 
-  redirect("/");
+  redirect("/deals");
 }
 
 export async function signUpViaInvite(
@@ -177,11 +183,33 @@ export async function signUpViaInvite(
     };
   }
 
-  redirect("/");
+  redirect("/deals");
 }
 
 export async function signOut(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+export async function resendConfirmationEmail(
+  _prevState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const email = (formData.get("email") as string | null)?.trim().toLowerCase();
+  if (!email) return { error: "E-Mail fehlt." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+  });
+
+  if (error) {
+    return { error: "Bestätigungs-E-Mail konnte nicht gesendet werden. Bitte versuche es später erneut." };
+  }
+
+  return {
+    message: "Bestätigungs-E-Mail wurde erneut gesendet. Bitte überprüfe dein Postfach.",
+  };
 }
