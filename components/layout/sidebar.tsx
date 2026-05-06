@@ -7,6 +7,10 @@ import {
   Settings,
   LogOut,
   Building2,
+  AlertTriangle,
+  BarChart2,
+  Upload,
+  Users,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -27,6 +31,30 @@ const navItems = [
     label: "Deals",
     icon: FileText,
     roles: ["admin", "closer", "sales_partner"] as Role[],
+  },
+  {
+    href: "/inkasso",
+    label: "Inkasso",
+    icon: AlertTriangle,
+    roles: ["admin"] as Role[],
+  },
+  {
+    href: "/berichte",
+    label: "Berichte",
+    icon: BarChart2,
+    roles: ["admin"] as Role[],
+  },
+  {
+    href: "/import",
+    label: "Importieren",
+    icon: Upload,
+    roles: ["admin"] as Role[],
+  },
+  {
+    href: "/einstellungen/benutzer",
+    label: "Benutzer",
+    icon: Users,
+    roles: ["admin"] as Role[],
   },
   {
     href: "/einstellungen/stammdaten",

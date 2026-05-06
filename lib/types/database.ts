@@ -512,19 +512,63 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: Record<
-      string,
-      {
-        Row: Record<string, unknown>;
-        Relationships: {
-          foreignKeyName: string;
-          columns: string[];
-          isOneToOne?: boolean;
-          referencedRelation: string;
-          referencedColumns: string[];
-        }[];
-      }
-    >;
+    Views: {
+      deal_balance: {
+        Row: {
+          deal_id: string;
+          organization_id: string;
+          paid_sum: number;
+          open_sum: number;
+          overdue_sum: number;
+          has_overdue: boolean;
+        };
+        Relationships: [];
+      };
+      deals_with_status: {
+        Row: {
+          id: string;
+          organization_id: string;
+          customer_name: string;
+          platform_id: string | null;
+          payment_method: string | null;
+          product_id: string | null;
+          order_id: string | null;
+          sales_partner_id: string | null;
+          closer_id: string | null;
+          total_price: number;
+          payment_type: Database["public"]["Enums"]["payment_type_enum"];
+          close_date: string;
+          inkasso_required: boolean;
+          onboarding_done: boolean;
+          update_call_done: boolean;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          paid_sum: number;
+          open_sum: number;
+          overdue_sum: number;
+          has_overdue: boolean;
+          computed_status: "paid" | "open" | "overdue" | "in_collection";
+        };
+        Relationships: [];
+      };
+      deals_overdue: {
+        Row: {
+          id: string;
+          organization_id: string;
+          customer_name: string;
+          total_price: number;
+          close_date: string;
+          paid_sum: number;
+          open_sum: number;
+          overdue_sum: number;
+          has_overdue: boolean;
+          computed_status: "paid" | "open" | "overdue" | "in_collection";
+        };
+        Relationships: [];
+      };
+    };
     Functions: Record<string, { Args: Record<string, unknown>; Returns: unknown }>;
     Enums: {
       role_enum: "admin" | "closer" | "sales_partner";
