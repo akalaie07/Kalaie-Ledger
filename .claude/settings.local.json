@@ -16,7 +16,10 @@
       "Bash(git add *)",
       "Bash(git push *)",
       "Bash(git rm *)",
-      "Bash(git commit -m 'Remove middleware.ts — proxy.ts already handles session in Next.js 16 *)"
+      "Bash(git commit -m 'Remove middleware.ts — proxy.ts already handles session in Next.js 16 *)",
+      "Bash(git commit -m ' *)",
+      "mcp__Claude_in_Chrome__computer",
+      "Bash(xargs grep *)"
     ]
   }
 }

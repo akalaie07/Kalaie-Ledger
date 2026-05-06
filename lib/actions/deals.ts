@@ -232,3 +232,58 @@ export async function deleteDeal(id: string): Promise<void> {
   revalidatePath("/deals");
   redirect("/deals");
 }
+
+// ---------------------------------------------------------------------------
+// markInstallmentPaid / unmarkInstallmentPaid
+// ---------------------------------------------------------------------------
+
+export async function markInstallmentPaid(
+  installmentId: string,
+  dealId: string,
+  paid: boolean,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("installments")
+    .update({
+      paid,
+      paid_at: paid ? new Date().toISOString() : null,
+    })
+    .eq("id", installmentId)
+    .eq("organization_id", session.organizationId);
+
+  if (error) return { error: "Status konnte nicht aktualisiert werden." };
+
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// markOneTimePaid / unmarkOneTimePaid
+// ---------------------------------------------------------------------------
+
+export async function markOneTimePaid(
+  dealId: string,
+  paid: boolean,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("one_time_payments")
+    .update({
+      paid,
+      paid_at: paid ? new Date().toISOString() : null,
+    })
+    .eq("deal_id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  if (error) return { error: "Status konnte nicht aktualisiert werden." };
+
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}

@@ -9,6 +9,7 @@ import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { InstallmentToggle, OneTimeToggle } from "./_components/payment-toggle";
 
 export const metadata: Metadata = { title: "Deal — Buchhaltung" };
 
@@ -26,7 +27,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function Badge({ active, label }: { active: boolean; label: string }) {
+function StatusBadge({ active, label }: { active: boolean; label: string }) {
   return (
     <span
       className={cn(
@@ -76,6 +77,8 @@ export default async function DealDetailPage({
   const d = deal;
   type InstallmentRow = { id: string; sequence: number; due_date: string; amount: number; paid: boolean };
 
+  const isAdmin = session.role === "admin";
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -94,15 +97,18 @@ export default async function DealDetailPage({
             </p>
           )}
         </div>
-        <Link
-          href={`/deals/${id}/edit`}
-          className={buttonVariants({ variant: "outline", size: "sm" })}
-        >
-          <Pencil className="mr-1.5 h-3.5 w-3.5" />
-          Bearbeiten
-        </Link>
+        {isAdmin && (
+          <Link
+            href={`/deals/${id}/edit`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+            Bearbeiten
+          </Link>
+        )}
       </div>
 
+      {/* Deal details */}
       <div className="rounded-lg border border-border p-4 space-y-0">
         <Row label="Produkt" value={d.products?.name} />
         <Row label="Plattform" value={d.platforms?.name} />
@@ -129,29 +135,27 @@ export default async function DealDetailPage({
         />
         <Row
           label="Onboarding"
-          value={<Badge active={d.onboarding_done} label={d.onboarding_done ? "Erledigt" : "Ausstehend"} />}
+          value={<StatusBadge active={d.onboarding_done} label={d.onboarding_done ? "Erledigt" : "Ausstehend"} />}
         />
         <Row
           label="Update-Call"
-          value={<Badge active={d.update_call_done} label={d.update_call_done ? "Erledigt" : "Ausstehend"} />}
+          value={<StatusBadge active={d.update_call_done} label={d.update_call_done ? "Erledigt" : "Ausstehend"} />}
         />
         {d.notes && <Row label="Notizen" value={d.notes} />}
       </div>
 
-      {/* Zahlungsstatus */}
+      {/* One-time payment status */}
       {d.payment_type === "one_time" && oneTime && (
         <div className="rounded-lg border border-border p-4">
           <h2 className="text-sm font-semibold mb-3">Zahlung</h2>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Status</span>
-            <Badge
-              active={oneTime.paid}
-              label={oneTime.paid ? "Bezahlt" : "Offen"}
-            />
+            <OneTimeToggle dealId={id} paid={oneTime.paid} />
           </div>
         </div>
       )}
 
+      {/* Installments table */}
       {d.payment_type === "installments" && installments && installments.length > 0 && (
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="border-b border-border px-4 py-3">
@@ -163,26 +167,16 @@ export default async function DealDetailPage({
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-muted/40">
               <tr>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  #
-                </th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  Fällig
-                </th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">
-                  Betrag
-                </th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  Status
-                </th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">#</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Fällig</th>
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Betrag</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {(installments as InstallmentRow[]).map((r) => (
                 <tr key={r.id} className="hover:bg-muted/20">
-                  <td className="px-4 py-2.5 text-muted-foreground">
-                    {r.sequence}
-                  </td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{r.sequence}</td>
                   <td className="px-4 py-2.5 tabular-nums">
                     {format(new Date(r.due_date), "dd.MM.yyyy", { locale: de })}
                   </td>
@@ -193,9 +187,10 @@ export default async function DealDetailPage({
                     }).format(r.amount)}
                   </td>
                   <td className="px-4 py-2.5">
-                    <Badge
-                      active={r.paid}
-                      label={r.paid ? "Bezahlt" : "Offen"}
+                    <InstallmentToggle
+                      installmentId={r.id}
+                      dealId={id}
+                      paid={r.paid}
                     />
                   </td>
                 </tr>
