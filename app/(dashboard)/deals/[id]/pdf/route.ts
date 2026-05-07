@@ -345,7 +345,7 @@ export async function GET(
 
   const safeName = deal.customer_name.replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, "-");
 
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="deal-${safeName}.pdf"`,
