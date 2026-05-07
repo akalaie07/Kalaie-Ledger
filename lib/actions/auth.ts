@@ -128,8 +128,10 @@ export async function signUp(
     if (msg.includes("already registered") || msg.includes("already exists")) {
       return { error: "Diese E-Mail-Adresse ist bereits registriert." };
     }
-    // Temporarily surface the real error for debugging
-    return { error: `Fehler: ${error.message}` };
+    if (msg.includes("database error") || msg.includes("trigger")) {
+      return { error: "Datenbankfehler beim Anlegen des Kontos. Bitte wende dich an den Support." };
+    }
+    return { error: "Registrierung fehlgeschlagen. Bitte erneut versuchen." };
   }
 
   if (!data.session) {
