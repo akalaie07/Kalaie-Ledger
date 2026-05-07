@@ -23,6 +23,12 @@ export default async function LoginPage({
         </p>
       )}
 
+      {error === "setup_failed" && (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          Dein Konto konnte nicht vollständig eingerichtet werden. Bitte registriere dich erneut oder wende dich an den Support.
+        </p>
+      )}
+
       <LoginForm next={next} />
     </div>
   );

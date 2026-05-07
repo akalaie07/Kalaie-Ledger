@@ -49,7 +49,20 @@ export const getCurrentSession = cache(async (): Promise<CurrentSession | null> 
 
 export async function requireSession(): Promise<CurrentSession> {
   const session = await getCurrentSession();
-  if (!session) redirect("/login");
+  if (!session) {
+    // If the user has a valid Supabase auth token but no profile row (e.g.
+    // the handle_new_user trigger failed on signup), staying on /login would
+    // cause an infinite redirect: middleware sends authenticated users back to
+    // /deals, which calls requireSession() again.  Sign them out first so
+    // the middleware lets them through to /login cleanly.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.auth.signOut();
+      redirect("/login?error=setup_failed");
+    }
+    redirect("/login");
+  }
   return session;
 }
 

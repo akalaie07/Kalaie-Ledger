@@ -15,8 +15,12 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       // Validate the redirect target to prevent open redirects.
+      // Default "/" would hit app/page.tsx which just re-redirects to /deals
+      // anyway — go straight there to avoid the extra round-trip.
       const safeNext =
-        next.startsWith("/") && !next.startsWith("//") ? next : "/deals";
+        next.startsWith("/") && !next.startsWith("//") && next !== "/"
+          ? next
+          : "/deals";
       return NextResponse.redirect(`${origin}${safeNext}`);
     }
   }
