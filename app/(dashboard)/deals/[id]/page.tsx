@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { ChevronLeft, FileDown, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 
@@ -97,15 +97,24 @@ export default async function DealDetailPage({
             </p>
           )}
         </div>
-        {isAdmin && (
-          <Link
-            href={`/deals/${id}/edit`}
+        <div className="flex items-center gap-2">
+          <a
+            href={`/deals/${id}/pdf`}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
-            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-            Bearbeiten
-          </Link>
-        )}
+            <FileDown className="mr-1.5 h-3.5 w-3.5" />
+            PDF
+          </a>
+          {isAdmin && (
+            <Link
+              href={`/deals/${id}/edit`}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Bearbeiten
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Deal details */}
