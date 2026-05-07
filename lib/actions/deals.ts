@@ -16,9 +16,14 @@ export type DealFormState = {
 // Schema
 // ---------------------------------------------------------------------------
 
-const uuidOpt = z
+const uuidOpt = z.preprocess(
+  (v) => (v === "" || v == null ? null : v),
+  z.string().uuid().nullable(),
+);
+
+const optDate = z
   .string()
-  .uuid()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Ungültiges Datum.")
   .optional()
   .nullable()
   .transform((v) => v || null);
@@ -69,11 +74,19 @@ const DealSchema = z.object({
     .min(2, "Mindestens 2 Raten.")
     .optional()
     .nullable(),
-  first_due_date: z
+  first_due_date: optDate,
+  // Neu: Anzahlung
+  down_payment: z.preprocess(
+    (v) => (v === "" || v == null ? null : Number(v)),
+    z.number().nonnegative("Muss ≥ 0 sein.").nullable(),
+  ),
+  // Neu: Fälligkeitsdatum für Einmalzahlung
+  one_time_due_date: optDate,
+  // Neu: Vertriebspartner inline anlegen
+  new_sales_partner_name: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Ungültiges Datum.")
+    .trim()
     .optional()
-    .nullable()
     .transform((v) => v || null),
 });
 
@@ -135,6 +148,9 @@ export async function createDeal(
   const {
     number_of_rates,
     first_due_date,
+    one_time_due_date,
+    new_sales_partner_name,
+    down_payment,
     ...dealFields
   } = result.data;
 
@@ -147,10 +163,27 @@ export async function createDeal(
 
   const supabase = await createClient();
 
+  // Neuen Vertriebspartner anlegen wenn eingegeben
+  let salesPartnerId = dealFields.sales_partner_id;
+  if (new_sales_partner_name) {
+    const { data: newPartner } = await supabase
+      .from("sales_partners")
+      .insert({
+        organization_id: session.organizationId,
+        name: new_sales_partner_name,
+        commission_rate: 0,
+      })
+      .select("id")
+      .single();
+    if (newPartner) salesPartnerId = newPartner.id;
+  }
+
   const { data: deal, error } = await supabase
     .from("deals")
     .insert({
       ...dealFields,
+      sales_partner_id: salesPartnerId,
+      down_payment,
       organization_id: session.organizationId,
       created_by: session.userId,
     })
@@ -165,12 +198,15 @@ export async function createDeal(
     await supabase.from("one_time_payments").insert({
       deal_id: deal.id,
       organization_id: session.organizationId,
+      due_date: one_time_due_date ?? null,
     });
   } else if (number_of_rates && first_due_date) {
+    // Raten decken den Betrag nach Anzahlung ab
+    const installmentTotal = dealFields.total_price - (down_payment ?? 0);
     const rows = generateInstallments(
       deal.id,
       session.organizationId,
-      dealFields.total_price,
+      installmentTotal,
       number_of_rates,
       first_due_date,
     );
@@ -198,16 +234,48 @@ export async function updateDeal(
     return { fieldErrors: result.error.flatten().fieldErrors };
   }
 
-  const { number_of_rates: _nr, first_due_date: _fd, ...dealFields } = result.data;
+  const {
+    number_of_rates: _nr,
+    first_due_date: _fd,
+    one_time_due_date,
+    new_sales_partner_name,
+    down_payment,
+    ...dealFields
+  } = result.data;
 
   const supabase = await createClient();
+
+  // Neuen Vertriebspartner anlegen wenn eingegeben
+  let salesPartnerId = dealFields.sales_partner_id;
+  if (new_sales_partner_name) {
+    const { data: newPartner } = await supabase
+      .from("sales_partners")
+      .insert({
+        organization_id: session.organizationId,
+        name: new_sales_partner_name,
+        commission_rate: 0,
+      })
+      .select("id")
+      .single();
+    if (newPartner) salesPartnerId = newPartner.id;
+  }
+
   const { error } = await supabase
     .from("deals")
-    .update(dealFields)
+    .update({ ...dealFields, sales_partner_id: salesPartnerId, down_payment })
     .eq("id", id)
     .eq("organization_id", session.organizationId);
 
   if (error) return { error: "Änderungen konnten nicht gespeichert werden." };
+
+  // Fälligkeitsdatum der Einmalzahlung aktualisieren
+  if (dealFields.payment_type === "one_time") {
+    await supabase
+      .from("one_time_payments")
+      .update({ due_date: one_time_due_date ?? null })
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId);
+  }
 
   revalidatePath("/deals");
   revalidatePath(`/deals/${id}`);

@@ -70,7 +70,7 @@ export default async function DealDetailPage({
 
   const { data: oneTime } = await supabase
     .from("one_time_payments")
-    .select("paid, paid_at")
+    .select("paid, paid_at, due_date")
     .eq("deal_id", id)
     .maybeSingle();
 
@@ -135,6 +135,19 @@ export default async function DealDetailPage({
             </span>
           }
         />
+        {d.down_payment != null && (
+          <Row
+            label="Anzahlung"
+            value={
+              <span className="tabular-nums text-emerald-400">
+                {new Intl.NumberFormat("de-DE", {
+                  style: "currency",
+                  currency: "EUR",
+                }).format(d.down_payment)}
+              </span>
+            }
+          />
+        )}
         <Row label="Zahlungsart" value={PAYMENT_LABEL[d.payment_type]} />
         <Row
           label="Abschluss"
@@ -155,8 +168,16 @@ export default async function DealDetailPage({
 
       {/* One-time payment status */}
       {d.payment_type === "one_time" && oneTime && (
-        <div className="rounded-lg border border-border p-4">
-          <h2 className="text-sm font-semibold mb-3">Zahlung</h2>
+        <div className="rounded-lg border border-border p-4 space-y-3">
+          <h2 className="text-sm font-semibold">Zahlung</h2>
+          {oneTime.due_date && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Fällig am</span>
+              <span className="text-sm tabular-nums">
+                {format(new Date(oneTime.due_date), "dd. MMMM yyyy", { locale: de })}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Status</span>
             <OneTimeToggle dealId={id} paid={oneTime.paid} />

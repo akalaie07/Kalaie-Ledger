@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { updateDeal, type DealFormState } from "@/lib/actions/deals";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ interface DealEditFormProps {
     notes: string | null;
     closer_id: string | null;
     sales_partner_id: string | null;
+    down_payment: number | null;
+    one_time_due_date: string | null;
   };
 }
 
@@ -88,6 +90,8 @@ export function DealEditForm({
     updateDealWithId,
     null,
   );
+  const [hasAnzahlung, setHasAnzahlung] = useState(initial.down_payment != null);
+  const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
 
   const fe = state?.fieldErrors ?? {};
 
@@ -197,6 +201,52 @@ export function DealEditForm({
           </div>
         </div>
 
+        {/* Anzahlung */}
+        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hasAnzahlung}
+              onChange={(e) => setHasAnzahlung(e.target.checked)}
+              className="h-4 w-4 rounded border-input accent-primary"
+            />
+            Anzahlung geleistet
+          </label>
+
+          {hasAnzahlung && (
+            <div className="space-y-1.5">
+              <Label htmlFor="down_payment">
+                Höhe der Anzahlung (€) <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="down_payment"
+                name="down_payment"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={initial.down_payment ?? ""}
+                aria-invalid={!!fe.down_payment}
+              />
+              <FieldError msg={fe.down_payment?.[0]} />
+            </div>
+          )}
+        </div>
+
+        {/* Fälligkeitsdatum Einmalzahlung */}
+        {initial.payment_type === "one_time" && (
+          <div className="space-y-1.5">
+            <Label htmlFor="one_time_due_date">Zahlung fällig zum</Label>
+            <Input
+              id="one_time_due_date"
+              name="one_time_due_date"
+              type="date"
+              defaultValue={initial.one_time_due_date ?? ""}
+              aria-invalid={!!fe.one_time_due_date}
+            />
+            <FieldError msg={fe.one_time_due_date?.[0]} />
+          </div>
+        )}
+
         <p className="text-xs text-muted-foreground">
           Hinweis: Änderungen an der Zahlungsart betreffen keine bestehenden Raten.
         </p>
@@ -214,13 +264,56 @@ export function DealEditForm({
             defaultValue={initial.closer_id}
             error={fe.closer_id?.[0]}
           />
-          <FormSelect
-            name="sales_partner_id"
-            label="Vertriebspartner"
-            options={salesPartners}
-            defaultValue={initial.sales_partner_id}
-            error={fe.sales_partner_id?.[0]}
-          />
+
+          {/* Vertriebspartner: aus Liste oder neu anlegen */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor={salesPartnerMode === "select" ? "sales_partner_id" : "new_sales_partner_name"}>
+                Vertriebspartner
+              </Label>
+              <button
+                type="button"
+                onClick={() => setSalesPartnerMode(salesPartnerMode === "select" ? "new" : "select")}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              >
+                {salesPartnerMode === "select" ? "+ Neu anlegen" : "Aus Liste wählen"}
+              </button>
+            </div>
+
+            {salesPartnerMode === "select" ? (
+              <>
+                <select
+                  id="sales_partner_id"
+                  name="sales_partner_id"
+                  defaultValue={initial.sales_partner_id ?? ""}
+                  className={cn(
+                    "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    fe.sales_partner_id && "border-destructive",
+                  )}
+                >
+                  <option value="">— keine —</option>
+                  {salesPartners.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+                <FieldError msg={fe.sales_partner_id?.[0]} />
+              </>
+            ) : (
+              <>
+                <Input
+                  id="new_sales_partner_name"
+                  name="new_sales_partner_name"
+                  placeholder="Name des Vertriebspartners"
+                  aria-invalid={!!fe.new_sales_partner_name}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Wird automatisch in Stammdaten angelegt (0 % Provision — bitte nachpflegen).
+                </p>
+                <FieldError msg={fe.new_sales_partner_name?.[0]} />
+              </>
+            )}
+          </div>
         </div>
       </section>
 

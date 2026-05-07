@@ -312,6 +312,7 @@ export type Database = {
           onboarding_done: boolean;
           update_call_done: boolean;
           notes: string | null;
+          down_payment: number | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -333,6 +334,7 @@ export type Database = {
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
+          down_payment?: number | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -354,6 +356,7 @@ export type Database = {
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
+          down_payment?: number | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -448,6 +451,7 @@ export type Database = {
           organization_id: string;
           paid: boolean;
           paid_at: string | null;
+          due_date: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -456,6 +460,7 @@ export type Database = {
           organization_id: string;
           paid?: boolean;
           paid_at?: string | null;
+          due_date?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -464,6 +469,7 @@ export type Database = {
           organization_id?: string;
           paid?: boolean;
           paid_at?: string | null;
+          due_date?: string | null;
           created_at?: string;
           updated_at?: string;
         };

@@ -20,7 +20,7 @@ export default async function DealEditPage({
   const session = await requireRole("admin");
   const supabase = await createClient();
 
-  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: salesPartners }] =
+  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: salesPartners }, { data: oneTime }] =
     await Promise.all([
       supabase
         .from("deals")
@@ -52,6 +52,11 @@ export default async function DealEditPage({
         .eq("organization_id", session.organizationId)
         .eq("active", true)
         .order("name"),
+      supabase
+        .from("one_time_payments")
+        .select("due_date")
+        .eq("deal_id", id)
+        .maybeSingle(),
     ]);
 
   if (!deal) notFound();
@@ -91,6 +96,8 @@ export default async function DealEditPage({
           notes: deal.notes,
           closer_id: deal.closer_id,
           sales_partner_id: deal.sales_partner_id,
+          down_payment: deal.down_payment ?? null,
+          one_time_due_date: oneTime?.due_date ?? null,
         }}
       />
 
