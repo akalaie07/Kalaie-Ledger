@@ -274,7 +274,7 @@ function DealDocument({ data }: { data: DealPdf }) {
             React.createElement(Text, { style: styles.rowLabel }, "Status"),
             React.createElement(
               Text,
-              { style: [styles.rowValue, oneTime.paid && styles.green] },
+              { style: oneTime.paid ? [styles.rowValue, styles.green] : styles.rowValue },
               oneTime.paid ? "Bezahlt" : "Offen",
             ),
           ),
