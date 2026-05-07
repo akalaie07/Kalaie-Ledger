@@ -253,7 +253,7 @@ function DealDocument({ data }: { data: DealPdf }) {
                 ),
                 React.createElement(
                   Text,
-                  { style: [styles.col4, r.paid && styles.green] },
+                  { style: r.paid ? [styles.col4, styles.green] : styles.col4 },
                   r.paid ? "Bezahlt" : "Offen",
                 ),
               ),
