@@ -65,39 +65,43 @@ export default async function BerichtePage() {
   const maxRevenue = Math.max(...monthly.map((m) => m.revenue), 1);
 
   // Closer commission summary
-  const closerRevMap = new Map<string, { name: string; revenue: number; commission: number }>();
+  const closerRevMap = new Map<string, { name: string; revenue: number; commission: number; rate: number }>();
   for (const d of deals) {
     if (!d.closer_id) continue;
     const c = closerById.get(d.closer_id);
     if (!c) continue;
     const rev = Number(d.total_price) || 0;
-    const prev = closerRevMap.get(d.closer_id) ?? { name: c.name, revenue: 0, commission: 0 };
+    const rate = Number(c.commission_rate) || 0;
+    const prev = closerRevMap.get(d.closer_id) ?? { name: c.name, revenue: 0, commission: 0, rate };
     closerRevMap.set(d.closer_id, {
       name: c.name,
       revenue: prev.revenue + rev,
-      commission: prev.commission + rev * (Number(c.commission_rate) || 0),
+      commission: prev.commission + rev * rate,
+      rate,
     });
   }
   const closers = Array.from(closerRevMap.values()).sort((a, b) => b.revenue - a.revenue);
 
   // Partner commission summary
-  const partnerRevMap = new Map<string, { name: string; revenue: number; commission: number }>();
+  const partnerRevMap = new Map<string, { name: string; revenue: number; commission: number; rate: number }>();
   for (const d of deals) {
     if (!d.sales_partner_id) continue;
     const p = partnerById.get(d.sales_partner_id);
     if (!p) continue;
     const rev = Number(d.total_price) || 0;
-    const prev = partnerRevMap.get(d.sales_partner_id) ?? { name: p.name, revenue: 0, commission: 0 };
+    const rate = Number(p.commission_rate) || 0;
+    const prev = partnerRevMap.get(d.sales_partner_id) ?? { name: p.name, revenue: 0, commission: 0, rate };
     partnerRevMap.set(d.sales_partner_id, {
       name: p.name,
       revenue: prev.revenue + rev,
-      commission: prev.commission + rev * (Number(p.commission_rate) || 0),
+      commission: prev.commission + rev * rate,
+      rate,
     });
   }
   const partners = Array.from(partnerRevMap.values()).sort((a, b) => b.revenue - a.revenue);
 
   return (
-    <div className="p-6 space-y-8 max-w-4xl">
+    <div className="mx-auto max-w-6xl px-6 py-8 space-y-8">
       <div>
         <h1 className="text-xl font-semibold">Berichte</h1>
         <p className="text-sm text-muted-foreground">
@@ -145,7 +149,7 @@ export default async function BerichtePage() {
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Closer</th>
                   <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Umsatz</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Anteil</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision %</th>
                   <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision</th>
                 </tr>
               </thead>
@@ -154,7 +158,7 @@ export default async function BerichtePage() {
                   <tr key={c.name} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-medium">{c.name}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.revenue)}</td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground">{pct(c.revenue, totalRevenue)}</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{(c.rate * 100).toFixed(0)} %</td>
                     <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(c.commission)}</td>
                   </tr>
                 ))}
@@ -174,7 +178,7 @@ export default async function BerichtePage() {
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Partner</th>
                   <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Umsatz</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Anteil</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision %</th>
                   <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision</th>
                 </tr>
               </thead>
@@ -183,7 +187,7 @@ export default async function BerichtePage() {
                   <tr key={p.name} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-medium">{p.name}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{fmt(p.revenue)}</td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground">{pct(p.revenue, totalRevenue)}</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{(p.rate * 100).toFixed(0)} %</td>
                     <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(p.commission)}</td>
                   </tr>
                 ))}
