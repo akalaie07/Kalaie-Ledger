@@ -9,7 +9,7 @@ export default async function ImportPage() {
   await requireRole("admin");
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
       <div>
         <h1 className="text-xl font-semibold">CSV Import</h1>
         <p className="text-sm text-muted-foreground">

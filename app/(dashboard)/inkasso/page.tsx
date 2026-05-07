@@ -42,7 +42,7 @@ export default async function InkassoPage() {
   const totalOverdue = rows.reduce((s, r) => s + (Number(r.overdue_sum) || 0), 0);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">

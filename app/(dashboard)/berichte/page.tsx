@@ -101,7 +101,7 @@ export default async function BerichtePage() {
   const partners = Array.from(partnerRevMap.values()).sort((a, b) => b.revenue - a.revenue);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 space-y-8">
+    <div className="mx-auto max-w-7xl px-6 py-8 space-y-8">
       <div>
         <h1 className="text-xl font-semibold">Berichte</h1>
         <p className="text-sm text-muted-foreground">
