@@ -341,9 +341,7 @@ export async function GET(
     oneTime: oneTime as DealPdf["oneTime"],
   };
 
-  const buffer = await renderToBuffer(
-    React.createElement(DealDocument, { data }),
-  );
+  const buffer = await renderToBuffer(DealDocument({ data }));
 
   const safeName = deal.customer_name.replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, "-");
 
