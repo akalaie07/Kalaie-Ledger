@@ -110,6 +110,7 @@ export default async function DealsPage() {
           <thead className="border-b border-border bg-muted/40">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Kunde</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bestell-ID</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Produkt</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Plattform</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Closer</th>
@@ -129,14 +130,14 @@ export default async function DealsPage() {
                   >
                     {deal.customer_name}
                   </Link>
-                  {deal.order_id && (
-                    <span className="ml-2 text-xs text-muted-foreground">#{deal.order_id}</span>
-                  )}
                   {deal.inkasso_required && (
                     <span className="ml-2 inline-flex items-center rounded-full bg-rose-500/15 px-1.5 py-0.5 text-xs font-medium text-rose-400">
                       Inkasso
                     </span>
                   )}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">
+                  {deal.order_id ? `#${deal.order_id}` : "—"}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{deal.products?.name ?? "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{deal.platforms?.name ?? "—"}</td>
@@ -168,7 +169,7 @@ export default async function DealsPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
                   Noch keine Deals vorhanden.{" "}
                   <Link href="/deals/new" className="text-foreground underline-offset-4 hover:underline">
                     Ersten Deal anlegen
