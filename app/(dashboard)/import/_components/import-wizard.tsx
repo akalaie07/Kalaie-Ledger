@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Upload, FileText, AlertTriangle, CheckCircle, X, Download } from "lucide-react";
-import Papa from "papaparse";
+import { Upload, FileText, AlertTriangle, CheckCircle, X } from "lucide-react";
+import * as XLSX from "xlsx";
 
 import { importDeals, type ImportRow, type ImportResult } from "@/lib/actions/import";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-// ─── Standard CSV template ───────────────────────────────────────────────────
+// ─── Standard CSV template download ──────────────────────────────────────────
 
 const TEMPLATE_HEADERS = [
   "Kunde", "Bestell-ID", "Plattform", "Produkt", "Zahlart",
@@ -66,94 +66,180 @@ function mapStandardRow(raw: Record<string, string>): ImportRow {
   };
 }
 
-// ─── Kalaie column-based parser ───────────────────────────────────────────────
+// ─── Column-based parser (Kalaie / MSM format) ───────────────────────────────
 
-function parseGermanPrice(val: string): number | null {
-  if (!val) return null;
-  // Remove €, spaces, thousand-separator dots, then replace decimal comma
-  const clean = val.replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+function parseGermanPrice(val: unknown): number | null {
+  if (val === null || val === undefined || val === "") return null;
+  if (typeof val === "number") return isNaN(val) ? null : val;
+  const s = String(val);
+  // Remove € and spaces, handle both German (1.234,56) and English (1,234.56) formats
+  let clean = s.replace(/€/g, "").replace(/\s/g, "");
+  // English format: comma as thousand sep, dot as decimal
+  if (/^\d{1,3}(,\d{3})*(\.\d+)?$/.test(clean)) {
+    clean = clean.replace(/,/g, "");
+  } else {
+    // German format: dot as thousand sep, comma as decimal
+    clean = clean.replace(/\./g, "").replace(",", ".");
+  }
   const n = parseFloat(clean);
   return isNaN(n) ? null : n;
 }
 
 function detectPlatform(desc: string): string {
   const d = desc.toLowerCase();
-  if (d.includes("copecart")) return "Copecart";
+  if (d.includes("copecart") || d.includes("cope")) return "Copecart";
   if (d.includes("digistore")) return "Digistore";
   if (d.includes("ablify") || d.includes("ablefy")) return "Ablefy";
   return "";
 }
 
-function parseKalaieCsv(rawRows: string[][], defaultDate: string): ImportRow[] {
-  if (rawRows.length < 3) return [];
+// Normalize row labels: trim whitespace, remove trailing colon, lowercase
+function normLabel(val: unknown): string {
+  return String(val ?? "").trim().toLowerCase().replace(/:$/, "").replace(/\s+/g, " ");
+}
 
-  // Row 0: ['', 'Kunde A', 'Kunde B', ...]
-  // Row 1: ['', 'RZ Copecart Gold', ...]
-  // Rows with label in col 0: 'Bestell-ID', '1.Rate', '2.Rate', ..., 'Gesamtpaket'
-  const customerNames = rawRows[0].slice(1);
-  const descriptions = rawRows[1]?.slice(1) ?? [];
+function parseColumnBasedRows(rawRows: unknown[][]): ImportRow[] | null {
+  if (rawRows.length < 5) return null;
 
-  // Index rows by label in column A
-  const rowByLabel = new Map<string, string[]>();
+  // Build label → row values map
+  const rowByLabel = new Map<string, unknown[]>();
   for (const row of rawRows) {
-    const label = (row[0] ?? "").trim().toLowerCase().replace(/:$/, "");
+    const label = normLabel(row[0]);
     if (label) rowByLabel.set(label, row.slice(1));
   }
 
-  const orderIds = rowByLabel.get("bestell-id") ?? [];
-  const gesamtpaket = rowByLabel.get("gesamtpaket") ?? [];
+  // Must have at least one of these to be a valid column-based file
+  const totalRow =
+    rowByLabel.get("gesamtpaket") ??
+    rowByLabel.get("preispaket") ??
+    rowByLabel.get("gesamtpreis");
 
-  // Collect all rate rows in order
-  const rateRows: string[][] = [];
+  const orderIdRow =
+    rowByLabel.get("bestell-id") ??
+    rowByLabel.get("bestl. id") ??
+    rowByLabel.get("bestell id") ??
+    rowByLabel.get("bestellnummer");
+
+  if (!totalRow) return null;
+
+  // Find customer names: first non-empty row where col A is empty
+  let customerNames: unknown[] = [];
+  let descRow: unknown[] = [];
+
+  for (const row of rawRows) {
+    const labelCell = String(row[0] ?? "").trim();
+    if (labelCell === "" && row.slice(1).some((c) => String(c ?? "").trim())) {
+      customerNames = row.slice(1);
+      break;
+    }
+    // If "Rate:" row — the descriptions are in the same row
+    if (normLabel(row[0]) === "rate") {
+      descRow = row.slice(1);
+    }
+  }
+
+  // Also check if "Rate:" row contains descriptions
+  const rateRow = rowByLabel.get("rate");
+  if (rateRow && rateRow.some((v) => String(v ?? "").trim().length > 3)) {
+    descRow = rateRow;
+  }
+
+  // If customer names still empty, take row index 1 as fallback
+  if (customerNames.every((c) => !String(c ?? "").trim())) {
+    customerNames = rawRows[1]?.slice(1) ?? [];
+  }
+
+  // Collect rate rows
+  const rateRows: unknown[][] = [];
   for (let r = 1; r <= 20; r++) {
-    const row = rowByLabel.get(`${r}.rate`);
+    const row = rowByLabel.get(`${r}.rate`) ?? rowByLabel.get(`${r}.rate `);
     if (row) rateRows.push(row);
   }
 
   const deals: ImportRow[] = [];
 
   for (let col = 0; col < customerNames.length; col++) {
-    const name = (customerNames[col] ?? "").trim();
+    const name = String(customerNames[col] ?? "").trim();
     if (!name) continue;
 
-    const totalPriceRaw = gesamtpaket[col] ?? "";
-    const totalPrice = parseGermanPrice(totalPriceRaw);
+    const totalPrice = parseGermanPrice(totalRow[col]);
     if (!totalPrice || totalPrice <= 0) continue;
 
-    // Count non-empty, non-zero rate cells for this column
     const filledRates = rateRows.filter((r) => {
-      const v = parseGermanPrice(r[col] ?? "");
+      const v = parseGermanPrice(r[col]);
       return v !== null && v > 0;
     });
     const numRates = filledRates.length;
-
     const paymentType = numRates > 1 ? "Ratenzahlung" : "Einmalzahlung";
-    const desc = (descriptions[col] ?? "").trim();
+
+    const desc = String(descRow[col] ?? "").trim().replace(/^\n/, "");
+    const orderId = String(orderIdRow?.[col] ?? "").trim().replace(/^\n/, "");
     const platform = detectPlatform(desc);
 
     deals.push({
       customer_name: name,
-      order_id: (orderIds[col] ?? "").trim() || undefined,
+      order_id: orderId || undefined,
       platform_name: platform || undefined,
       total_price: totalPrice.toString(),
       payment_type: paymentType,
-      close_date: defaultDate,
+      close_date: "",
       number_of_rates: numRates > 1 ? numRates.toString() : undefined,
       notes: desc || undefined,
     });
   }
 
-  return deals;
+  return deals.length > 0 ? deals : null;
 }
 
-// ─── Detect format ────────────────────────────────────────────────────────────
+// ─── File parsing ─────────────────────────────────────────────────────────────
 
-function detectFormat(rawRows: string[][]): "kalaie" | "standard" {
-  if (rawRows.length < 3) return "standard";
-  // If any cell in column A matches a known Kalaie row label → Kalaie format
-  const labels = rawRows.map((r) => (r[0] ?? "").trim().toLowerCase().replace(/:$/, ""));
-  const kalaieLabels = ["bestell-id", "gesamtpaket", "1.rate", "summe"];
-  return kalaieLabels.some((l) => labels.includes(l)) ? "kalaie" : "standard";
+type ParsedFile = { format: "column" | "standard"; rows: ImportRow[] };
+
+function parseXlsx(buffer: ArrayBuffer): ParsedFile | string {
+  try {
+    const wb = XLSX.read(buffer, { type: "array" });
+    const allDeals: ImportRow[] = [];
+
+    for (const sheetName of wb.SheetNames) {
+      const ws = wb.Sheets[sheetName];
+      const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
+      const parsed = parseColumnBasedRows(raw);
+      if (parsed) allDeals.push(...parsed);
+    }
+
+    if (allDeals.length === 0) return "Kein Deal erkannt. Stelle sicher, dass die Datei eine 'Preispaket'- oder 'Gesamtpaket'-Zeile enthält.";
+    return { format: "column", rows: allDeals };
+  } catch {
+    return "Datei konnte nicht gelesen werden.";
+  }
+}
+
+function parseCsvText(text: string): ParsedFile | string {
+  // Try to detect delimiter
+  const firstLine = text.split("\n")[0] ?? "";
+  const delimiter = firstLine.includes(";") ? ";" : ",";
+
+  // Split into rows
+  const rawRows = text.split("\n").map((line) =>
+    line.split(delimiter).map((cell) => cell.replace(/^"|"$/g, "").trim()),
+  );
+
+  const colParsed = parseColumnBasedRows(rawRows);
+  if (colParsed) return { format: "column", rows: colParsed };
+
+  // Fall back to standard row-based format
+  const headers = rawRows[0];
+  const rows = rawRows.slice(1)
+    .filter((r) => r.some((c) => c.trim()))
+    .map((r) => {
+      const obj: Record<string, string> = {};
+      headers.forEach((h, i) => { obj[h] = r[i] ?? ""; });
+      return mapStandardRow(obj);
+    })
+    .filter((r) => r.customer_name);
+
+  if (rows.length === 0) return "Keine Deals gefunden.";
+  return { format: "standard", rows };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -165,53 +251,41 @@ export function ImportWizard() {
   const [parseError, setParseError] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [pending, startTransition] = useTransition();
-  const [detectedFormat, setDetectedFormat] = useState<"kalaie" | "standard" | null>(null);
+  const [format, setFormat] = useState<"column" | "standard" | null>(null);
   const [defaultDate, setDefaultDate] = useState(new Date().toISOString().slice(0, 10));
+
+  function applyDate(r: ImportRow[], date: string): ImportRow[] {
+    return r.map((row) => ({ ...row, close_date: row.close_date || date }));
+  }
 
   function handleFile(file: File) {
     if (!file) return;
-    reset(false);
+    resetState();
     setFileName(file.name);
 
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext !== "csv") {
-      setParseError("Nur CSV-Dateien werden unterstützt. Exportiere deine Tabelle als CSV (Datei → Herunterladen → CSV).");
-      return;
+
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = parseXlsx(e.target!.result as ArrayBuffer);
+        if (typeof result === "string") { setParseError(result); return; }
+        setFormat(result.format);
+        setRows(applyDate(result.rows, defaultDate));
+      };
+      reader.readAsArrayBuffer(file);
+    } else if (ext === "csv") {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = parseCsvText(e.target!.result as string);
+        if (typeof result === "string") { setParseError(result); return; }
+        setFormat(result.format);
+        setRows(applyDate(result.rows, defaultDate));
+      };
+      reader.readAsText(file, "utf-8");
+    } else {
+      setParseError("Nur CSV oder Excel-Dateien (.xlsx) werden unterstützt.");
     }
-
-    // Parse without headers first to detect format
-    Papa.parse<string[]>(file, {
-      header: false,
-      skipEmptyLines: false,
-      delimiter: "",
-      complete: (res) => {
-        const rawRows = res.data as string[][];
-        const format = detectFormat(rawRows);
-        setDetectedFormat(format);
-
-        if (format === "kalaie") {
-          const deals = parseKalaieCsv(rawRows, defaultDate);
-          if (deals.length === 0) {
-            setParseError("Kein Deal erkannt. Stelle sicher, dass die Datei eine 'Bestell-ID'- und 'Gesamtpaket'-Zeile enthält.");
-          } else {
-            setRows(deals);
-          }
-        } else {
-          // Re-parse with headers for standard format
-          Papa.parse<Record<string, string>>(file, {
-            header: true,
-            skipEmptyLines: true,
-            delimiter: "",
-            complete: (res2) => {
-              const mapped = (res2.data as Record<string, string>[]).map(mapStandardRow);
-              setRows(mapped);
-            },
-            error: (err) => setParseError(err.message),
-          });
-        }
-      },
-      error: (err) => setParseError(err.message),
-    });
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -228,43 +302,41 @@ export function ImportWizard() {
     });
   }
 
-  function reset(full = true) {
+  function resetState() {
     setRows([]);
     setParseError("");
-    setDetectedFormat(null);
-    if (full) {
-      setFileName("");
-      setResult(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    setFormat(null);
   }
 
-  // Re-parse when defaultDate changes (only for Kalaie format)
+  function fullReset() {
+    resetState();
+    setFileName("");
+    setResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   function handleDateChange(date: string) {
     setDefaultDate(date);
-    if (detectedFormat === "kalaie" && rows.length > 0) {
-      setRows((prev) => prev.map((r) => ({ ...r, close_date: date })));
-    }
+    setRows((prev) => prev.map((r) => ({ ...r, close_date: r.close_date || date })));
   }
 
   return (
     <div className="space-y-6">
-      {/* Info + template */}
+      {/* Info */}
       <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-3">
-        <p className="text-sm font-medium">Zwei Formate werden unterstützt:</p>
+        <p className="text-sm font-medium">Unterstützte Formate</p>
         <div className="grid sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
           <div className="space-y-1">
-            <p className="font-medium text-foreground">📋 Eigene Google-Tabelle</p>
-            <p>Exportiere deine bestehende Tabelle als CSV — das Format wird automatisch erkannt (Kunden als Spalten, Raten als Zeilen).</p>
+            <p className="font-medium text-foreground">📊 Excel / CSV (Tabellen-Format)</p>
+            <p>Deine bestehende Buchhaltungs-Tabelle — Kunden als Spalten, Raten als Zeilen. Einfach hochladen, wird automatisch erkannt.</p>
           </div>
           <div className="space-y-1">
             <p className="font-medium text-foreground">📄 Standard-CSV</p>
-            <p>Jede Zeile ist ein Deal. Lade die Vorlage herunter, fülle sie aus und importiere sie.</p>
+            <p>Eine Zeile pro Deal. Lade die Vorlage herunter, fülle sie aus und importiere sie.</p>
             <button
               onClick={downloadTemplate}
-              className="inline-flex items-center gap-1 text-foreground underline underline-offset-4 hover:no-underline text-xs mt-1"
+              className="text-xs text-foreground underline underline-offset-4 hover:no-underline mt-1"
             >
-              <Download className="h-3 w-3" />
               Vorlage herunterladen
             </button>
           </div>
@@ -276,8 +348,8 @@ export function ImportWizard() {
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
-          className="rounded-lg border-2 border-dashed border-border bg-muted/10 px-8 py-12 text-center space-y-4 transition-colors hover:border-border/80 cursor-pointer"
           onClick={() => fileInputRef.current?.click()}
+          className="rounded-lg border-2 border-dashed border-border bg-muted/10 px-8 py-12 text-center space-y-4 transition-colors hover:border-border/80 cursor-pointer"
         >
           <div className="flex justify-center">
             <div className="rounded-full bg-muted p-4">
@@ -285,7 +357,7 @@ export function ImportWizard() {
             </div>
           </div>
           <div>
-            <p className="font-medium">CSV-Datei hochladen</p>
+            <p className="font-medium">Excel (.xlsx) oder CSV hochladen</p>
             <p className="text-sm text-muted-foreground mt-1">
               Klicken oder Datei hier ablegen — Format wird automatisch erkannt
             </p>
@@ -293,12 +365,9 @@ export function ImportWizard() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv"
+            accept=".csv,.xlsx,.xls"
             className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-            }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
           />
         </div>
       )}
@@ -310,19 +379,19 @@ export function ImportWizard() {
         </div>
       )}
 
-      {/* Detected format badge + Kalaie options */}
-      {rows.length > 0 && detectedFormat && (
+      {/* Format badge + date picker */}
+      {rows.length > 0 && format && (
         <div className="flex flex-wrap items-center gap-3">
           <span className={cn(
             "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-            detectedFormat === "kalaie"
+            format === "column"
               ? "bg-blue-500/15 text-blue-400"
               : "bg-emerald-500/15 text-emerald-400",
           )}>
-            {detectedFormat === "kalaie" ? "Google-Tabellen-Format erkannt" : "Standard-CSV erkannt"}
+            {format === "column" ? "Tabellen-Format erkannt" : "Standard-CSV erkannt"}
           </span>
 
-          {detectedFormat === "kalaie" && (
+          {format === "column" && (
             <div className="flex items-center gap-2 text-sm">
               <Label htmlFor="default_date" className="text-muted-foreground whitespace-nowrap">
                 Abschlussdatum (für alle Deals):
@@ -339,7 +408,7 @@ export function ImportWizard() {
         </div>
       )}
 
-      {/* Preview table */}
+      {/* Preview */}
       {rows.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -350,7 +419,7 @@ export function ImportWizard() {
                 — {rows.length} {rows.length === 1 ? "Deal" : "Deals"} erkannt
               </span>
             </div>
-            <button onClick={() => reset(true)} className="text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={fullReset} className="text-muted-foreground hover:text-foreground">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -375,7 +444,7 @@ export function ImportWizard() {
                         : "—"}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">{r.payment_type || "—"}</td>
-                    <td className="px-3 py-2 text-center">{r.number_of_rates || "—"}</td>
+                    <td className="px-3 py-2 text-center">{r.number_of_rates || "1"}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{r.platform_name || "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{r.notes || "—"}</td>
                   </tr>
@@ -395,9 +464,7 @@ export function ImportWizard() {
             <Button onClick={handleImport} disabled={pending}>
               {pending ? `Importiere ${rows.length} Deals…` : `${rows.length} Deals importieren`}
             </Button>
-            <Button variant="outline" onClick={() => reset(true)}>
-              Abbrechen
-            </Button>
+            <Button variant="outline" onClick={fullReset}>Abbrechen</Button>
           </div>
         </div>
       )}
@@ -412,11 +479,9 @@ export function ImportWizard() {
               : "border-amber-500/40 bg-amber-500/10",
           )}>
             <div className="flex items-center gap-2">
-              {result.errors.length === 0 ? (
-                <CheckCircle className="h-4 w-4 text-emerald-400" />
-              ) : (
-                <AlertTriangle className="h-4 w-4 text-amber-400" />
-              )}
+              {result.errors.length === 0
+                ? <CheckCircle className="h-4 w-4 text-emerald-400" />
+                : <AlertTriangle className="h-4 w-4 text-amber-400" />}
               <span className="text-sm font-medium">
                 {result.imported} Deals importiert
                 {result.skipped > 0 && `, ${result.skipped} übersprungen`}
@@ -424,18 +489,12 @@ export function ImportWizard() {
             </div>
             {result.errors.length > 0 && (
               <ul className="space-y-1 text-xs text-amber-400">
-                {result.errors.slice(0, 10).map((e, i) => (
-                  <li key={i}>• {e}</li>
-                ))}
-                {result.errors.length > 10 && (
-                  <li>+ {result.errors.length - 10} weitere Fehler…</li>
-                )}
+                {result.errors.slice(0, 10).map((e, i) => <li key={i}>• {e}</li>)}
+                {result.errors.length > 10 && <li>+ {result.errors.length - 10} weitere…</li>}
               </ul>
             )}
           </div>
-          <Button variant="outline" onClick={() => reset(true)}>
-            Weiteren Import starten
-          </Button>
+          <Button variant="outline" onClick={fullReset}>Weiteren Import starten</Button>
         </div>
       )}
     </div>
