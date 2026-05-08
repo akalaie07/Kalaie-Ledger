@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { DealRowActions } from "./_components/deal-row-actions";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
 
@@ -70,6 +71,7 @@ export default async function DealsPage() {
 
   const rows = deals ?? [];
   const bal = balance ?? [];
+  const isAdmin = session.role === "admin";
 
   const totalRevenue = rows.reduce((s, d) => s + (d.total_price as number), 0);
   const paidSum = bal.reduce((s, b) => s + (Number(b.paid_sum) || 0), 0);
@@ -114,11 +116,12 @@ export default async function DealsPage() {
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Preis</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Zahlung</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Abschluss</th>
+              {isAdmin && <th className="px-4 py-3" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((deal) => (
-              <tr key={deal.id} className="hover:bg-muted/30 transition-colors">
+              <tr key={deal.id} className="group hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3">
                   <Link
                     href={`/deals/${deal.id}`}
@@ -156,6 +159,11 @@ export default async function DealsPage() {
                 <td className="px-4 py-3 text-muted-foreground tabular-nums">
                   {format(new Date(deal.close_date), "dd.MM.yyyy", { locale: de })}
                 </td>
+                {isAdmin && (
+                  <td className="px-3 py-3">
+                    <DealRowActions dealId={deal.id} />
+                  </td>
+                )}
               </tr>
             ))}
             {rows.length === 0 && (
