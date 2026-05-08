@@ -97,12 +97,7 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
       continue;
     }
 
-    const close_date = parseDate(row.close_date);
-    if (!close_date) {
-      errors.push(`${rowLabel} (${row.customer_name}): Ungültiges Abschlussdatum.`);
-      skipped++;
-      continue;
-    }
+    const close_date = parseDate(row.close_date) ?? new Date().toISOString().slice(0, 10);
 
     const total_price = parsePrice(row.total_price ?? "");
     if (total_price === null || total_price < 0) {
