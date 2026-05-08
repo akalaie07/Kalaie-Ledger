@@ -10,57 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-// ─── Kalaie example download ─────────────────────────────────────────────────
-
-function downloadKalaieExample() {
-  const sep = ";";
-  const rows = [
-    // Row 0: customer names
-    ["", "Max Mustermann", "Sarah Becker", "Jonas Weber", "Lena Fischer", "Tom Richter"].join(sep),
-    // Row 1: description
-    ["", "RZ, Copecart Gold", "RZ, Digistore Gold", "RZ, Copecart Gold", "EZ Ablefy", "RZ, Copecart Gold"].join(sep),
-    // Row 2: rate (commission, optional)
-    ["Rate:", "", "", "", "", ""].join(sep),
-    // Row 3: Bestell-ID
-    ["Bestell-ID", "2ebe24db", "NAFJKRZL", "24HAARM5", "rzVMT1Xg", "13724255"].join(sep),
-    // Rates 1-12
-    ["1.Rate", "291,66", "130,25", "130,25", "2.941,20", "140,09"].join(sep),
-    ["2.Rate", "", "130,25", "130,25", "", "140,09"].join(sep),
-    ["3.Rate", "", "130,25", "130,25", "", "140,09"].join(sep),
-    ["4.Rate", "", "130,25", "", "", "140,09"].join(sep),
-    ["5.Rate", "", "130,25", "", "", "140,09"].join(sep),
-    ["6.Rate", "", "130,25", "", "", "140,09"].join(sep),
-    ["7.Rate", "", "", "", "", "140,09"].join(sep),
-    ["8.Rate", "", "", "", "", "140,09"].join(sep),
-    ["9.Rate", "", "", "", "", "140,09"].join(sep),
-    ["10.Rate", "", "", "", "", "140,09"].join(sep),
-    ["11.Rate", "", "", "", "", "140,09"].join(sep),
-    ["12.Rate", "", "", "", "", "140,09"].join(sep),
-    ["13.Rate", "", "", "", "", ""].join(sep),
-    ["14.Rate", "", "", "", "", ""].join(sep),
-    ["15.Rate", "", "", "", "", ""].join(sep),
-    ["16.Rate", "", "", "", "", ""].join(sep),
-    ["17.Rate", "", "", "", "", ""].join(sep),
-    ["18.Rate", "", "", "", "", ""].join(sep),
-    ["19.Rate", "", "", "", "", ""].join(sep),
-    ["20.Rate", "", "", "", "", ""].join(sep),
-    // Summary rows
-    ["Summe:", "291,66", "781,50", "390,75", "2.941,20", "1.681,08"].join(sep),
-    ["Gebühren:", "2.941,20", "2.941,20", "2.941,20", "2.941,20", "2.941,89"].join(sep),
-    ["Gesamtpaket", "2.941,20", "2.941,20", "2.941,20", "2.941,20", "2.941,89"].join(sep),
-    ["Differenz:", "-2.649,54", "-2.159,70", "-2.550,45", "0,00", "-1.260,81"].join(sep),
-    ["GESAMT:", "-8.619,70", "", "", "", ""].join(sep),
-  ];
-  const content = rows.join("\n");
-  const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "beispiel-tabelle.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 // ─── Standard CSV template ───────────────────────────────────────────────────
 
 const TEMPLATE_HEADERS = [
@@ -307,13 +256,6 @@ export function ImportWizard() {
           <div className="space-y-1">
             <p className="font-medium text-foreground">📋 Eigene Google-Tabelle</p>
             <p>Exportiere deine bestehende Tabelle als CSV — das Format wird automatisch erkannt (Kunden als Spalten, Raten als Zeilen).</p>
-            <button
-              onClick={downloadKalaieExample}
-              className="inline-flex items-center gap-1 text-foreground underline underline-offset-4 hover:no-underline text-xs mt-1"
-            >
-              <Download className="h-3 w-3" />
-              Beispiel herunterladen
-            </button>
           </div>
           <div className="space-y-1">
             <p className="font-medium text-foreground">📄 Standard-CSV</p>
