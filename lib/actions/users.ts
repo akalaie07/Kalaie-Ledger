@@ -5,11 +5,12 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentSession } from "@/lib/auth/get-current-org";
+import { sendInviteEmail } from "@/lib/email";
 
 export type UserActionState = {
   error?: string;
-  /** The raw invite token — client constructs the full URL using window.location.origin */
   inviteToken?: string;
+  emailSent?: boolean;
 } | null;
 
 const InviteSchema = z.object({
@@ -62,14 +63,38 @@ export async function createInvite(
     .single();
 
   if (error || !invite) {
-    // Could be duplicate invite (unique constraint on org+email)
     if (error?.code === "23505") {
       return { error: "Für diese E-Mail gibt es bereits eine offene Einladung." };
     }
     return { error: "Einladung konnte nicht erstellt werden." };
   }
 
+  // Fetch org name + inviter name for the email
+  const [{ data: org }, { data: profile }] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", session.organizationId)
+      .single(),
+    supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", session.userId)
+      .single(),
+  ]);
+
+  const emailResult = await sendInviteEmail({
+    to: email,
+    role,
+    token: invite.token,
+    orgName: org?.name ?? "deiner Organisation",
+    invitedByName: profile?.full_name ?? profile?.email ?? "Ein Admin",
+  });
+
   revalidatePath("/einstellungen/benutzer");
 
-  return { inviteToken: invite.token };
+  return {
+    inviteToken: invite.token,
+    emailSent: emailResult.ok,
+  };
 }

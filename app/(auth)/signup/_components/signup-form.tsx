@@ -20,9 +20,10 @@ export function SignupForm() {
         <p className="text-sm font-medium text-foreground">{state.message}</p>
         <p className="text-xs text-muted-foreground">
           Nach der Bestätigung kannst du dich direkt{" "}
-          <Link href="/login" className="text-foreground underline-offset-4 hover:underline">
+          {/* Hard-reload statt client-side navigation — vermeidet Session-Cache-Bug */}
+          <a href="/login" className="text-foreground underline-offset-4 hover:underline">
             anmelden
-          </Link>
+          </a>
           .
         </p>
       </div>

@@ -79,30 +79,46 @@ export function InviteForm() {
 
       {inviteUrl && (
         <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2">
-          <p className="text-sm font-medium text-emerald-400">Einladungslink erstellt!</p>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              readOnly
-              value={inviteUrl}
-              className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs font-mono text-muted-foreground truncate"
-            />
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="shrink-0 rounded p-1.5 hover:bg-emerald-500/20 transition-colors"
-              title="Link kopieren"
-            >
-              {copied ? (
-                <Check className="h-4 w-4 text-emerald-400" />
-              ) : (
-                <Copy className="h-4 w-4 text-emerald-400" />
-              )}
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Link ist 14 Tage gültig. Sende ihn direkt an die eingeladene Person.
-          </p>
+          {state?.emailSent ? (
+            <p className="text-sm font-medium text-emerald-400">
+              ✓ Einladungs-E-Mail wurde gesendet!
+            </p>
+          ) : (
+            <p className="text-sm font-medium text-emerald-400">
+              Einladungslink erstellt
+            </p>
+          )}
+
+          {/* Fallback link — always shown in case email doesn't arrive */}
+          <details className={state?.emailSent ? "text-xs" : undefined}>
+            {state?.emailSent && (
+              <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground select-none">
+                Link als Fallback anzeigen (falls E-Mail nicht ankommt)
+              </summary>
+            )}
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="text"
+                readOnly
+                value={inviteUrl}
+                className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs font-mono text-muted-foreground truncate"
+              />
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="shrink-0 rounded p-1.5 hover:bg-emerald-500/20 transition-colors"
+                title="Link kopieren"
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-emerald-400" />
+                ) : (
+                  <Copy className="h-4 w-4 text-emerald-400" />
+                )}
+              </button>
+            </div>
+          </details>
+
+          <p className="text-xs text-muted-foreground">Link ist 14 Tage gültig.</p>
         </div>
       )}
     </div>
