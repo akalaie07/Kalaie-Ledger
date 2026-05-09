@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth/get-current-org";
 import { Sidebar } from "@/components/layout/sidebar";
+import { PresenceTracker } from "@/components/presence-tracker";
 
 export default async function DashboardLayout({
   children,
@@ -10,6 +11,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <PresenceTracker userId={session.userId} />
       <Sidebar
         orgName={session.organizationName}
         fullName={session.fullName}

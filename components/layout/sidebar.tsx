@@ -11,6 +11,7 @@ import {
   BarChart2,
   Upload,
   Users,
+  MessageSquare,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -49,6 +50,12 @@ const navItems = [
     label: "Importieren",
     icon: Upload,
     roles: ["admin"] as Role[],
+  },
+  {
+    href: "/chat",
+    label: "Chat",
+    icon: MessageSquare,
+    roles: ["admin", "closer", "sales_partner"] as Role[],
   },
   {
     href: "/einstellungen/benutzer",

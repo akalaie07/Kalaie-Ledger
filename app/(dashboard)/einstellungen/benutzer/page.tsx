@@ -22,6 +22,11 @@ const ROLE_CLASS: Record<string, string> = {
   sales_partner: "bg-amber-500/15 text-amber-400",
 };
 
+function isOnline(last_seen_at: string | null) {
+  if (!last_seen_at) return false;
+  return Date.now() - new Date(last_seen_at).getTime() < 2 * 60 * 1000;
+}
+
 export default async function BenutzerPage() {
   const session = await requireRole("admin");
   const supabase = await createClient();
@@ -29,7 +34,7 @@ export default async function BenutzerPage() {
   const [{ data: profiles }, { data: invites }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, email, full_name, role, created_at")
+      .select("id, email, full_name, role, created_at, last_seen_at")
       .eq("organization_id", session.organizationId)
       .order("created_at"),
     supabase
@@ -66,14 +71,27 @@ export default async function BenutzerPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {users.map((u) => (
+              {users.map((u) => {
+                const online = isOnline(u.last_seen_at ?? null);
+                return (
                 <tr key={u.id} className={cn("hover:bg-muted/20", u.id === session.userId && "bg-muted/10")}>
                   <td className="px-4 py-2.5">
-                    <p className="font-medium">{u.full_name ?? u.email}</p>
-                    {u.full_name && <p className="text-xs text-muted-foreground">{u.email}</p>}
-                    {u.id === session.userId && (
-                      <span className="text-[10px] text-muted-foreground">(Du)</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "inline-block h-2 w-2 rounded-full shrink-0",
+                          online ? "bg-emerald-400" : "bg-muted-foreground/30",
+                        )}
+                        title={online ? "Online" : "Offline"}
+                      />
+                      <div>
+                        <p className="font-medium">{u.full_name ?? u.email}</p>
+                        {u.full_name && <p className="text-xs text-muted-foreground">{u.email}</p>}
+                        {u.id === session.userId && (
+                          <span className="text-[10px] text-muted-foreground">(Du)</span>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-2.5">
                     <span className={cn(
@@ -87,7 +105,8 @@ export default async function BenutzerPage() {
                     {format(new Date(u.created_at), "dd.MM.yyyy", { locale: de })}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
