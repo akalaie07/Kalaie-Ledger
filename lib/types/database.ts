@@ -45,6 +45,7 @@ export type Database = {
           role: Database["public"]["Enums"]["role_enum"];
           created_at: string;
           updated_at: string;
+          last_seen_at: string | null;
         };
         Insert: {
           id: string;
@@ -54,6 +55,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["role_enum"];
           created_at?: string;
           updated_at?: string;
+          last_seen_at?: string | null;
         };
         Update: {
           id?: string;
@@ -63,6 +65,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["role_enum"];
           created_at?: string;
           updated_at?: string;
+          last_seen_at?: string | null;
         };
         Relationships: [
           {
@@ -119,6 +122,45 @@ export type Database = {
           {
             foreignKeyName: "organization_invites_invited_by_fkey";
             columns: ["invited_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      messages: {
+        Row: {
+          id: string;
+          organization_id: string;
+          sender_id: string;
+          content: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          sender_id: string;
+          content: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          sender_id?: string;
+          content?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "messages_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey";
+            columns: ["sender_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
