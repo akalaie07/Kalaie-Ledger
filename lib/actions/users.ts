@@ -98,3 +98,42 @@ export async function createInvite(
     emailSent: emailResult.ok,
   };
 }
+
+export async function resendInviteEmail(
+  token: string,
+  email: string,
+  role: string,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+  if (session.role !== "admin") return { error: "Nur Admins können Einladungen senden." };
+
+  const supabase = await createClient();
+
+  // Verify the invite belongs to this org
+  const { data: invite } = await supabase
+    .from("organization_invites")
+    .select("id")
+    .eq("token", token)
+    .eq("organization_id", session.organizationId)
+    .is("accepted_at", null)
+    .maybeSingle();
+
+  if (!invite) return { error: "Einladung nicht gefunden." };
+
+  const [{ data: org }, { data: profile }] = await Promise.all([
+    supabase.from("organizations").select("name").eq("id", session.organizationId).single(),
+    supabase.from("profiles").select("full_name, email").eq("id", session.userId).single(),
+  ]);
+
+  const result = await sendInviteEmail({
+    to: email,
+    role,
+    token,
+    orgName: org?.name ?? "deiner Organisation",
+    invitedByName: profile?.full_name ?? profile?.email ?? "Ein Admin",
+  });
+
+  if (!result.ok) return { error: result.error ?? "E-Mail konnte nicht gesendet werden." };
+  return {};
+}

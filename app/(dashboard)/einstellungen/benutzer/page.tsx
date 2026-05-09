@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { InviteForm } from "./_components/invite-form";
+import { InviteRowActions } from "./_components/invite-row-actions";
 
 export const metadata: Metadata = { title: "Benutzerverwaltung — Buchhaltung" };
 
@@ -33,7 +34,7 @@ export default async function BenutzerPage() {
       .order("created_at"),
     supabase
       .from("organization_invites")
-      .select("id, email, role, expires_at, accepted_at")
+      .select("id, email, role, token, expires_at, accepted_at")
       .eq("organization_id", session.organizationId)
       .is("accepted_at", null)
       .gt("expires_at", new Date().toISOString())
@@ -103,6 +104,7 @@ export default async function BenutzerPage() {
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">E-Mail</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Rolle</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Läuft ab</th>
+                  <th className="px-4 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -119,6 +121,13 @@ export default async function BenutzerPage() {
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
                       {format(new Date(inv.expires_at), "dd.MM.yyyy", { locale: de })}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <InviteRowActions
+                        token={inv.token}
+                        email={inv.email}
+                        role={inv.role}
+                      />
                     </td>
                   </tr>
                 ))}
