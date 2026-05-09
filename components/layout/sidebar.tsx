@@ -16,14 +16,26 @@ import {
 
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth";
+import { SidebarMembers } from "./sidebar-members";
 
 type Role = "admin" | "closer" | "sales_partner";
+
+type Member = {
+  id: string;
+  full_name: string | null;
+  email: string;
+  role: string;
+  last_seen_at: string | null;
+};
 
 interface SidebarProps {
   orgName: string;
   fullName: string | null;
   email: string;
   role: Role;
+  currentUserId: string;
+  organizationId: string;
+  initialMembers: Member[];
 }
 
 const navItems = [
@@ -98,7 +110,7 @@ function NavLink({
   );
 }
 
-export function Sidebar({ orgName, fullName, email, role }: SidebarProps) {
+export function Sidebar({ orgName, fullName, email, role, currentUserId, organizationId, initialMembers }: SidebarProps) {
   const pathname = usePathname();
 
   const visible = navItems.filter((item) => item.roles.includes(role));
@@ -123,6 +135,13 @@ export function Sidebar({ orgName, fullName, email, role }: SidebarProps) {
           />
         ))}
       </nav>
+
+      {/* Team-Mitglieder mit Online-Status */}
+      <SidebarMembers
+        initialMembers={initialMembers}
+        currentUserId={currentUserId}
+        organizationId={organizationId}
+      />
 
       <div className="border-t border-border p-2">
         <div className="mb-1 px-3 py-1.5">
