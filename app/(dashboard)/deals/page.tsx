@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus, TrendingUp, Clock, AlertTriangle, CheckCircle } from "lucide-react";
+import { Plus, TrendingUp, Clock, AlertTriangle, CheckCircle, NotebookPen } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 
@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { hasFeature } from "@/lib/features";
 import { DealRowActions } from "./_components/deal-row-actions";
 import { DealFilterTabs } from "./_components/deal-filter-tabs";
 import { DealSearch } from "./_components/deal-search";
@@ -74,7 +75,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, order_id, platforms(name), products(name), closers(name), sales_partners(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, order_id, notes, platforms(name), products(name), closers(name), sales_partners(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -85,17 +86,22 @@ export default async function DealsPage({
   ]);
 
   const allRows = deals ?? [];
+  const showProductFilter = hasFeature(session, "msm_mcc_filter");
 
-  // Count per category
-  const counts = { alle: allRows.length, msm: 0, mcc: 0 };
-  for (const d of allRows) {
-    const cat = getCategory(d.products?.name);
-    if (cat === "msm") counts.msm++;
-    else if (cat === "mcc") counts.mcc++;
+  // Count per category (nur wenn Feature aktiv)
+  const counts: Record<string, number> = { alle: allRows.length };
+  if (showProductFilter) {
+    counts.msm = 0;
+    counts.mcc = 0;
+    for (const d of allRows) {
+      const cat = getCategory(d.products?.name);
+      if (cat === "msm") counts.msm++;
+      else if (cat === "mcc") counts.mcc++;
+    }
   }
 
-  // Apply category filter
-  const categoryRows = filter === "msm" || filter === "mcc"
+  // Apply category filter (nur wenn Feature aktiv)
+  const categoryRows = showProductFilter && (filter === "msm" || filter === "mcc")
     ? allRows.filter((d) => getCategory(d.products?.name) === filter)
     : allRows;
 
@@ -155,7 +161,7 @@ export default async function DealsPage({
 
       {/* Filter tabs + Search */}
       <div className="flex items-center justify-between gap-4">
-        <DealFilterTabs active={filter} counts={counts} />
+        <DealFilterTabs active={filter} counts={counts} showProductFilter={showProductFilter} />
         <DealSearch filter={filter} defaultValue={q || undefined} />
       </div>
 
@@ -190,12 +196,24 @@ export default async function DealsPage({
             {rows.map((deal) => (
               <tr key={deal.id} className="group hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3">
-                  <Link
-                    href={`/deals/${deal.id}`}
-                    className="font-medium hover:underline underline-offset-4"
-                  >
-                    {deal.customer_name}
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      href={`/deals/${deal.id}`}
+                      className="font-medium hover:underline underline-offset-4"
+                    >
+                      {deal.customer_name}
+                    </Link>
+                    {deal.notes && (
+                      <span
+                        title={(deal.notes as string).length > 80
+                          ? (deal.notes as string).slice(0, 80) + "…"
+                          : (deal.notes as string)}
+                        className="text-amber-400/70 hover:text-amber-400 transition-colors cursor-default"
+                      >
+                        <NotebookPen className="h-3.5 w-3.5" />
+                      </span>
+                    )}
+                  </div>
                   {deal.inkasso_required && (
                     <span className="ml-2 inline-flex items-center rounded-full bg-rose-500/15 px-1.5 py-0.5 text-xs font-medium text-rose-400">
                       Inkasso

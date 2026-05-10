@@ -74,14 +74,10 @@ const navItems: NavItem[] = [
     roles: ["admin"],
   },
   {
-    href: "/import",
+    href: "/import/deals",
     label: "Importieren",
     icon: Upload,
     roles: ["admin"],
-    children: [
-      { href: "/import/deals", label: "Deals importieren" },
-      { href: "/import/zahlungsabgleich", label: "Zahlungsabgleich" },
-    ],
   },
   {
     href: "/chat",

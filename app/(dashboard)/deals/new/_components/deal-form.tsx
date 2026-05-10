@@ -81,6 +81,9 @@ export function DealForm({
   const [paymentType, setPaymentType] = useState<"one_time" | "installments">("one_time");
   const [hasAnzahlung, setHasAnzahlung] = useState(false);
   const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
+  const [totalPrice, setTotalPrice] = useState<number>(0);
+  const [downPayment, setDownPayment] = useState<number>(0);
+  const [numberOfRates, setNumberOfRates] = useState<number>(0);
 
   const fe = state?.fieldErrors ?? {};
 
@@ -162,6 +165,7 @@ export function DealForm({
               step="0.01"
               required
               aria-invalid={!!fe.total_price}
+              onChange={(e) => setTotalPrice(parseFloat(e.target.value) || 0)}
             />
             <FieldError msg={fe.total_price?.[0]} />
           </div>
@@ -224,6 +228,7 @@ export function DealForm({
                 min="0"
                 step="0.01"
                 aria-invalid={!!fe.down_payment}
+                onChange={(e) => setDownPayment(parseFloat(e.target.value) || 0)}
               />
               <FieldError msg={fe.down_payment?.[0]} />
             </div>
@@ -246,35 +251,62 @@ export function DealForm({
 
         {/* Raten-Felder */}
         {paymentType === "installments" && (
-          <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/20 p-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="number_of_rates">
-                Anzahl Raten <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="number_of_rates"
-                name="number_of_rates"
-                type="number"
-                min="2"
-                required
-                aria-invalid={!!fe.number_of_rates}
-              />
-              <FieldError msg={fe.number_of_rates?.[0]} />
+          <div className="space-y-3">
+            <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/20 p-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="number_of_rates">
+                  Anzahl Raten <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="number_of_rates"
+                  name="number_of_rates"
+                  type="number"
+                  min="2"
+                  required
+                  aria-invalid={!!fe.number_of_rates}
+                  onChange={(e) => setNumberOfRates(parseInt(e.target.value) || 0)}
+                />
+                <FieldError msg={fe.number_of_rates?.[0]} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="first_due_date">
+                  Erstes Fälligkeitsdatum <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="first_due_date"
+                  name="first_due_date"
+                  type="date"
+                  required
+                  aria-invalid={!!fe.first_due_date}
+                />
+                <FieldError msg={fe.first_due_date?.[0]} />
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="first_due_date">
-                Erstes Fälligkeitsdatum <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="first_due_date"
-                name="first_due_date"
-                type="date"
-                required
-                aria-invalid={!!fe.first_due_date}
-              />
-              <FieldError msg={fe.first_due_date?.[0]} />
-            </div>
+            {/* Live-Vorschau Ratenbetrag */}
+            {totalPrice > 0 && numberOfRates >= 2 && (
+              (() => {
+                const effective = hasAnzahlung ? downPayment : 0;
+                const base = totalPrice - effective;
+                const perRate = base > 0 ? base / numberOfRates : 0;
+                const fmt = (v: number) =>
+                  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
+                return (
+                  <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
+                    <p className="font-medium text-blue-300">Ratenvorschau</p>
+                    <div className="mt-1.5 space-y-0.5 text-blue-200/80">
+                      {hasAnzahlung && effective > 0 && (
+                        <p>Gesamtpreis {fmt(totalPrice)} − Anzahlung {fmt(effective)} = <span className="font-medium text-blue-100">{fmt(base)}</span> verbleibend</p>
+                      )}
+                      <p>
+                        {fmt(base)} ÷ {numberOfRates} Raten = <span className="font-semibold text-blue-100 text-base">{fmt(perRate)} pro Rate</span>
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
           </div>
         )}
       </section>

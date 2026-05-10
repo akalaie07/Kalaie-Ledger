@@ -14,6 +14,8 @@ export type CurrentSession = {
   organizationName: string;
   role: Role;
   fullName: string | null;
+  features: string[];
+  isSuperAdmin: boolean;
 };
 
 export const getCurrentSession = cache(async (): Promise<CurrentSession | null> => {
@@ -24,26 +26,39 @@ export const getCurrentSession = cache(async (): Promise<CurrentSession | null> 
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: profile } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
     .from("profiles")
-    .select("id, email, full_name, role, organization_id, organizations(name)")
+    .select("id, email, full_name, role, organization_id, is_super_admin, organizations(name, settings)")
     .eq("id", user.id)
-    .maybeSingle();
+    .maybeSingle() as { data: {
+      id: string;
+      email: string;
+      full_name: string | null;
+      role: string;
+      organization_id: string;
+      is_super_admin: boolean;
+      organizations: { name: string; settings: { features?: string[] } } | { name: string; settings: { features?: string[] } }[] | null;
+    } | null };
 
   if (!profile?.organization_id) return null;
 
-  const orgName =
-    Array.isArray(profile.organizations)
-      ? profile.organizations[0]?.name
-      : (profile.organizations as { name: string } | null)?.name;
+  const orgData = Array.isArray(profile.organizations)
+    ? profile.organizations[0]
+    : profile.organizations;
+
+  const orgName = orgData?.name ?? "";
+  const features: string[] = orgData?.settings?.features ?? [];
 
   return {
     userId: user.id,
-    email: profile.email as string,
-    organizationId: profile.organization_id as string,
-    organizationName: (orgName as string) ?? "",
+    email: profile.email,
+    organizationId: profile.organization_id,
+    organizationName: orgName,
     role: profile.role as Role,
-    fullName: (profile.full_name as string | null) ?? null,
+    fullName: profile.full_name ?? null,
+    features,
+    isSuperAdmin: profile.is_super_admin ?? false,
   };
 });
 
