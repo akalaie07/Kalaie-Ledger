@@ -1,9 +1,6 @@
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-const FROM = process.env.EMAIL_FROM ?? "Buchhaltung <einladung@resend.dev>";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://buchhaltung-kalaie.vercel.app";
+const FROM_EMAIL = process.env.EMAIL_FROM_ADDRESS ?? "noreply@kalaie-ledger.com";
+const FROM_NAME = process.env.EMAIL_FROM_NAME ?? "Buchhaltung Kalaie";
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
@@ -24,19 +21,24 @@ export async function sendInviteEmail({
   orgName: string;
   invitedByName: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  if (!process.env.RESEND_API_KEY) {
-    // No API key configured — skip silently, caller shows link as fallback
-    return { ok: false, error: "RESEND_API_KEY nicht konfiguriert." };
+  if (!process.env.BREVO_API_KEY) {
+    return { ok: false, error: "BREVO_API_KEY nicht konfiguriert." };
   }
 
   const inviteUrl = `${APP_URL}/invite?token=${token}`;
   const roleLabel = ROLE_LABEL[role] ?? role;
 
-  const { error } = await resend.emails.send({
-    from: FROM,
-    to,
-    subject: `Du wurdest zu ${orgName} eingeladen`,
-    html: `
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: FROM_NAME, email: FROM_EMAIL },
+      to: [{ email: to }],
+      subject: `Du wurdest zu ${orgName} eingeladen`,
+      htmlContent: `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -72,10 +74,14 @@ export async function sendInviteEmail({
     </tr>
   </table>
 </body>
-</html>
-    `.trim(),
+</html>`.trim(),
+    }),
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, error: (body as { message?: string }).message ?? "E-Mail konnte nicht gesendet werden." };
+  }
+
   return { ok: true };
 }
