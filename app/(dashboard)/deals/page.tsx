@@ -280,7 +280,7 @@ export default async function DealsPage({
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <Link href={`/deals/${deal.id}`} className="block space-y-1">
+                  <Link href={`/deals/${deal.id}`} className="block space-y-0.5">
                     {deal.payment_type === "one_time" ? (
                       (() => {
                         const isPaid = otpMap.get(deal.id) ?? false;
@@ -288,21 +288,18 @@ export default async function DealsPage({
                         const openAmt = isPaid ? 0 : (deal.total_price as number) - (dp ?? 0);
                         return (
                           <>
-                            <div className="flex flex-wrap gap-1">
-                              <span className={cn(
-                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                                isPaid ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400",
-                              )}>
-                                {isPaid ? "Bezahlt" : "Offen"}
-                              </span>
-                              {dp ? (
-                                <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                                  AZ {fmt(dp)}
-                                </span>
-                              ) : null}
-                            </div>
-                            {!isPaid && openAmt > 0 && (
-                              <p className="text-xs text-rose-400/80">{fmt(openAmt)} offen</p>
+                            <span className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                              isPaid ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400",
+                            )}>
+                              {isPaid ? "Bezahlt" : "Offen"}
+                            </span>
+                            {(dp || (!isPaid && openAmt > 0)) && (
+                              <p className="text-xs text-muted-foreground">
+                                {dp ? `AZ ${fmt(dp)}` : ""}
+                                {dp && !isPaid && openAmt > 0 ? " · " : ""}
+                                {!isPaid && openAmt > 0 ? <span className="text-rose-400/80">{fmt(openAmt)} offen</span> : null}
+                              </p>
                             )}
                           </>
                         );
@@ -312,35 +309,29 @@ export default async function DealsPage({
                         const inst = instMap.get(deal.id);
                         const paid = inst?.paid ?? 0;
                         const total = inst?.total ?? 0;
-                        const done = paid === total && total > 0;
-                        const perRate = inst?.perRate ?? 0;
+                        if (total === 0) return <span className="text-muted-foreground/40 text-xs">—</span>;
+                        const done = paid === total;
                         const openAmount = inst?.openAmount ?? 0;
                         const dp = (deal as Record<string, unknown>).down_payment as number | null;
                         return (
                           <>
-                            <div className="flex flex-wrap gap-1">
-                              <span className={cn(
-                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                                done
-                                  ? "bg-emerald-500/15 text-emerald-400"
-                                  : paid > 0
-                                  ? "bg-amber-500/15 text-amber-400"
-                                  : "bg-rose-500/15 text-rose-400",
-                              )}>
-                                {paid}/{total} Raten
-                              </span>
-                              {dp ? (
-                                <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                                  AZ {fmt(dp)}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-                              {perRate > 0 && <span>{fmt(perRate)}/Rate</span>}
-                              {!done && openAmount > 0 && (
-                                <span className="text-rose-400/80">{fmt(openAmount)} offen</span>
-                              )}
-                            </div>
+                            <span className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                              done
+                                ? "bg-emerald-500/15 text-emerald-400"
+                                : paid > 0
+                                ? "bg-amber-500/15 text-amber-400"
+                                : "bg-rose-500/15 text-rose-400",
+                            )}>
+                              {paid}/{total} Raten
+                            </span>
+                            {(dp || (!done && openAmount > 0)) && (
+                              <p className="text-xs text-muted-foreground">
+                                {dp ? `AZ ${fmt(dp)}` : ""}
+                                {dp && !done && openAmount > 0 ? " · " : ""}
+                                {!done && openAmount > 0 ? <span className="text-rose-400/80">{fmt(openAmount)} offen</span> : null}
+                              </p>
+                            )}
                           </>
                         );
                       })()
