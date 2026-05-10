@@ -7,6 +7,8 @@ import { Bell } from "lucide-react";
 import { requireRole } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { ForderungsNav } from "../_components/forderungs-nav";
+import { MahnungNoteEditor } from "../_components/mahnung-note-editor";
+import { MahnungEscalateButton } from "../_components/mahnung-escalate-button";
 
 export const metadata: Metadata = { title: "Mahnung — Buchhaltung" };
 
@@ -20,9 +22,10 @@ export default async function MahnungPage() {
 
   const { data } = await supabase
     .from("deals")
-    .select("id, customer_name, total_price, close_date, order_id, payment_type, products(name), closers(name)")
+    .select("id, customer_name, total_price, close_date, order_id, notes, products(name), closers(name)")
     .eq("organization_id", session.organizationId)
     .eq("mahnung_required", true)
+    .eq("inkasso_required", false)
     .order("close_date", { ascending: false });
 
   const rows = data ?? [];
@@ -58,13 +61,15 @@ export default async function MahnungPage() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Kunde</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Produkt</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Closer</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Notiz</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Gesamtpreis</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Abschluss</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-muted/30 transition-colors">
+              <tr key={r.id} className="group hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3">
                   <Link href={`/deals/${r.id}`} className="font-medium hover:underline underline-offset-4">
                     {r.customer_name}
@@ -75,17 +80,23 @@ export default async function MahnungPage() {
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{r.products?.name ?? "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{r.closers?.name ?? "—"}</td>
+                <td className="px-4 py-3">
+                  <MahnungNoteEditor dealId={r.id} notes={r.notes} />
+                </td>
                 <td className="px-4 py-3 text-right tabular-nums font-medium">
                   {fmt(r.total_price as number)}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground tabular-nums">
                   {format(new Date(r.close_date), "dd.MM.yyyy", { locale: de })}
                 </td>
+                <td className="px-3 py-3">
+                  <MahnungEscalateButton dealId={r.id} />
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                   <p className="text-sm">Keine Fälle in Mahnung.</p>
                   <p className="text-xs mt-1 text-emerald-400">Alles im grünen Bereich! ✓</p>
                 </td>

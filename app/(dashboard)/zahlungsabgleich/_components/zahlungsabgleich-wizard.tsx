@@ -11,41 +11,62 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// ─── CSV Parsers ──────────────────────────────────────────────────────────────
+// ─── Proper quoted-field CSV parser ──────────────────────────────────────────
+
+function parseLine(line: string, delimiter: string): string[] {
+  const result: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === delimiter && !inQuotes) {
+      result.push(field.trim());
+      field = "";
+    } else {
+      field += ch;
+    }
+  }
+  result.push(field.trim());
+  return result;
+}
+
+// ─── Platform detection ───────────────────────────────────────────────────────
 
 type Platform = "copecart" | "digistore" | "ablefy";
 
-function detectPlatformFromHeaders(headers: string[]): Platform | null {
+function detectPlatform(headers: string[]): Platform | null {
   const h = headers.map((x) => x.toLowerCase().trim());
-  // Copecart: comma-separated, has "transaktionsstatus"
-  if (h.some((x) => x.includes("transaktionsstatus"))) return "copecart";
-  // Digistore: semicolon-separated, has "zahlungsnr"
-  if (h.some((x) => x.includes("zahlungsnr"))) return "digistore";
-  // Ablefy: semicolon-separated, has "fälligkeiten id" or "fälliger betrag"
-  if (h.some((x) => x.includes("fälligkeiten") || x.includes("fälliger"))) return "ablefy";
+  // Copecart: comma-separated, unique column "transaktionsstatus"
+  if (h.some((x) => x === "transaktionsstatus")) return "copecart";
+  // Digistore: semicolon-separated, unique column "zahlungsnr."
+  if (h.some((x) => x.startsWith("zahlungsnr"))) return "digistore";
+  // Ablefy: headers use ae/oe/ue for umlauts, unique column "zahlungsplan"
+  if (h.some((x) => x === "zahlungsplan")) return "ablefy";
   return null;
 }
+
+// ─── Copecart parser ──────────────────────────────────────────────────────────
 
 function parseCopecart(text: string): AbgleichRow[] {
   const lines = text.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.replace(/^"|"$/g, "").trim());
 
-  const idxOrderId = headers.findIndex((h) => h.toLowerCase().includes("bestell-id") || h.toLowerCase() === "order id");
-  const idxStatus = headers.findIndex((h) => h.toLowerCase().includes("transaktionsstatus"));
-
-  if (idxOrderId < 0 || idxStatus < 0) return [];
+  const headers = parseLine(lines[0], ",");
+  const idxId = headers.findIndex((h) => h.toLowerCase() === "bestell-id");
+  const idxStatus = headers.findIndex((h) => h.toLowerCase() === "transaktionsstatus");
+  if (idxId < 0 || idxStatus < 0) return [];
 
   const rows: AbgleichRow[] = [];
   for (const line of lines.slice(1)) {
-    const cols = line.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
-    const orderId = cols[idxOrderId];
-    const status = cols[idxStatus];
+    const cols = parseLine(line, ",");
+    const orderId = cols[idxId];
+    const status = (cols[idxStatus] ?? "").toLowerCase();
     if (!orderId) continue;
 
-    const isPaid = status.toLowerCase().includes("bezahlt") || status.toLowerCase() === "paid";
-    const isRefunded = status.toLowerCase().includes("erstattet") || status.toLowerCase().includes("refund");
-
+    const isPaid = status.includes("bezahlt");
+    const isRefunded = status.includes("erstattet");
     rows.push({
       order_id: orderId,
       platform: "copecart",
@@ -55,59 +76,71 @@ function parseCopecart(text: string): AbgleichRow[] {
   return rows;
 }
 
+// ─── Digistore parser ─────────────────────────────────────────────────────────
+
 function parseDigistore(text: string): AbgleichRow[] {
   const lines = text.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
-  const headers = lines[0].split(";").map((h) => h.replace(/^"|"$/g, "").trim());
 
-  const idxOrderId = headers.findIndex((h) => h.toLowerCase().includes("bestell-id") || h.toLowerCase() === "order-id");
-  const idxZahlungsnr = headers.findIndex((h) => h.toLowerCase().includes("zahlungsnr"));
-
-  if (idxOrderId < 0) return [];
+  const headers = parseLine(lines[0], ";");
+  const idxId = headers.findIndex((h) => h.toLowerCase() === "bestell-id");
+  const idxNr = headers.findIndex((h) => h.toLowerCase().startsWith("zahlungsnr"));
+  const idxType = headers.findIndex((h) => h.toLowerCase() === "transaktionstyp");
+  if (idxId < 0) return [];
 
   const rows: AbgleichRow[] = [];
   for (const line of lines.slice(1)) {
-    const cols = line.split(";").map((c) => c.replace(/^"|"$/g, "").trim());
-    const orderId = cols[idxOrderId];
+    const cols = parseLine(line, ";");
+    const orderId = cols[idxId];
     if (!orderId) continue;
 
-    const zahlungsnr = idxZahlungsnr >= 0 ? parseInt(cols[idxZahlungsnr] ?? "1", 10) : undefined;
+    // Only process actual payments, skip refunds/chargebacks
+    const txType = (cols[idxType] ?? "").toLowerCase();
+    if (txType && !txType.includes("zahlung")) continue;
 
+    const nr = idxNr >= 0 ? parseInt(cols[idxNr] ?? "1", 10) : undefined;
     rows.push({
       order_id: orderId,
       platform: "digistore",
       status: "paid",
-      installment_sequence: isNaN(zahlungsnr ?? NaN) ? undefined : zahlungsnr,
+      installment_sequence: nr && !isNaN(nr) ? nr : undefined,
     });
   }
   return rows;
 }
 
+// ─── Ablefy parser ────────────────────────────────────────────────────────────
+// Ablefy exports umlauts as ae/oe/ue (e.g. FAeLLIGKEITEN, WAeHRUNG)
+
 function parseAblefy(text: string): AbgleichRow[] {
   const lines = text.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
-  const headers = lines[0].split(";").map((h) => h.replace(/^"|"$/g, "").trim());
 
-  const idxOrderId = headers.findIndex((h) => h.toLowerCase().replace(/[- ]/g, "") === "bestellid");
-  const idxStatus = headers.findIndex((h) => h.toLowerCase() === "status");
-  const idxFaelligkeitenId = headers.findIndex((h) => h.toLowerCase().includes("fälligkeiten"));
+  const headers = parseLine(lines[0], ";");
+  const norm = (s: string) => s.toLowerCase().trim();
 
-  if (idxOrderId < 0) return [];
+  const idxId = headers.findIndex((h) => norm(h).replace(/[- ]/g, "") === "bestellid");
+  const idxStatus = headers.findIndex((h) => norm(h) === "status");
+  // FAeLLIGKEITEN ID header uses ae for ä
+  const idxFaellig = headers.findIndex((h) => {
+    const l = norm(h);
+    return l.includes("faelligkeiten") || l.includes("fälligkeiten");
+  });
 
-  // Track sequence per order_id
+  if (idxId < 0) return [];
+
   const seqMap = new Map<string, number>();
-
   const rows: AbgleichRow[] = [];
+
   for (const line of lines.slice(1)) {
-    const cols = line.split(";").map((c) => c.replace(/^"|"$/g, "").trim());
-    const orderId = cols[idxOrderId];
+    const cols = parseLine(line, ";");
+    const orderId = cols[idxId];
     if (!orderId) continue;
 
-    const status = idxStatus >= 0 ? cols[idxStatus] : "";
-    const isPaid = status.toLowerCase().includes("erfolgreich") || status.toLowerCase() === "paid" || status === "";
-    const isFailed = status.toLowerCase().includes("abgelaufen") || status.toLowerCase().includes("failed");
+    const status = norm(cols[idxStatus] ?? "");
+    const isPaid = status.includes("erfolgreich");
+    const isFailed = status.includes("abgelaufen") || status.includes("failed");
 
-    // Increment sequence per order
     const seq = (seqMap.get(orderId) ?? 0) + 1;
     seqMap.set(orderId, seq);
 
@@ -115,19 +148,26 @@ function parseAblefy(text: string): AbgleichRow[] {
       order_id: orderId,
       platform: "ablefy",
       status: isFailed ? "failed" : isPaid ? "paid" : "failed",
-      installment_sequence: idxFaelligkeitenId >= 0 ? seq : undefined,
+      installment_sequence: idxFaellig >= 0 ? seq : undefined,
     });
   }
   return rows;
 }
 
-function parseCsvFile(text: string): { rows: AbgleichRow[]; platform: Platform } | string {
+// ─── File parser entry point ──────────────────────────────────────────────────
+
+type ParsedFile = { rows: AbgleichRow[]; platform: Platform };
+
+function parseCsvFile(text: string): ParsedFile | string {
+  // Detect delimiter from first line
   const firstLine = text.split("\n")[0] ?? "";
   const delimiter = firstLine.includes(";") ? ";" : ",";
-  const headers = firstLine.split(delimiter).map((h) => h.replace(/^"|"$/g, "").trim());
+  const headers = parseLine(firstLine, delimiter);
 
-  const platform = detectPlatformFromHeaders(headers);
-  if (!platform) return "Plattform nicht erkannt. Bitte prüfe, ob die Datei von Copecart, Digistore oder Ablefy stammt.";
+  const platform = detectPlatform(headers);
+  if (!platform) {
+    return "Plattform nicht erkannt. Bitte prüfe, ob die Datei von Copecart, Digistore oder Ablefy stammt.";
+  }
 
   let rows: AbgleichRow[] = [];
   if (platform === "copecart") rows = parseCopecart(text);
@@ -146,10 +186,16 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   ablefy: "Ablefy",
 };
 
+const PLATFORM_COLOR: Record<Platform, string> = {
+  copecart: "bg-blue-500/15 text-blue-400",
+  digistore: "bg-purple-500/15 text-purple-400",
+  ablefy: "bg-emerald-500/15 text-emerald-400",
+};
+
 const STATUS_LABEL: Record<string, string> = {
   paid: "Bezahlt",
   refunded: "Erstattet",
-  failed: "Fehlgeschlagen",
+  failed: "Übersprungen",
 };
 
 export function ZahlungsabgleichWizard() {
@@ -162,20 +208,14 @@ export function ZahlungsabgleichWizard() {
   const [pending, startTransition] = useTransition();
 
   function handleFile(file: File) {
-    setRows([]);
-    setParseError("");
-    setPlatform(null);
-    setResult(null);
+    setRows([]); setParseError(""); setPlatform(null); setResult(null);
     setFileName(file.name);
 
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target!.result as string;
       const parsed = parseCsvFile(text);
-      if (typeof parsed === "string") {
-        setParseError(parsed);
-        return;
-      }
+      if (typeof parsed === "string") { setParseError(parsed); return; }
       setRows(parsed.rows);
       setPlatform(parsed.platform);
     };
@@ -197,11 +237,7 @@ export function ZahlungsabgleichWizard() {
   }
 
   function fullReset() {
-    setRows([]);
-    setParseError("");
-    setPlatform(null);
-    setFileName("");
-    setResult(null);
+    setRows([]); setParseError(""); setPlatform(null); setFileName(""); setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -214,8 +250,8 @@ export function ZahlungsabgleichWizard() {
       <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-2">
         <p className="text-sm font-medium">Wie es funktioniert</p>
         <p className="text-sm text-muted-foreground">
-          Lade den CSV-Export von Copecart, Digistore oder Ablefy hoch. Die Transaktionen werden anhand der
-          Bestell-ID mit deinen Deals abgeglichen und der Zahlungsstatus automatisch aktualisiert.
+          Lade den CSV-Export von Copecart, Digistore oder Ablefy hoch. Die Transaktionen werden
+          anhand der Bestell-ID mit deinen Deals abgeglichen und der Zahlungsstatus automatisch aktualisiert.
         </p>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           <span className="rounded-full border border-border px-2 py-0.5">Copecart CSV</span>
@@ -230,7 +266,7 @@ export function ZahlungsabgleichWizard() {
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
           onClick={() => fileInputRef.current?.click()}
-          className="rounded-lg border-2 border-dashed border-border bg-muted/10 px-8 py-12 text-center space-y-4 transition-colors hover:border-border/80 cursor-pointer"
+          className="rounded-lg border-2 border-dashed border-border bg-muted/10 px-8 py-12 text-center space-y-4 hover:border-border/80 cursor-pointer transition-colors"
         >
           <div className="flex justify-center">
             <div className="rounded-full bg-muted p-4">
@@ -239,9 +275,7 @@ export function ZahlungsabgleichWizard() {
           </div>
           <div>
             <p className="font-medium">CSV-Export hochladen</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Klicken oder Datei hier ablegen
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">Klicken oder Datei hier ablegen</p>
           </div>
           <input
             ref={fileInputRef}
@@ -267,15 +301,13 @@ export function ZahlungsabgleichWizard() {
             <div className="flex items-center gap-2 flex-wrap">
               <FileText className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">{fileName}</span>
-              <span className="inline-flex items-center rounded-full bg-blue-500/15 text-blue-400 px-2.5 py-0.5 text-xs font-medium">
+              <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", PLATFORM_COLOR[platform])}>
                 {PLATFORM_LABEL[platform]}
               </span>
               <span className="text-sm text-muted-foreground">
-                {rows.length} Transaktionen — davon{" "}
+                {rows.length} Transaktionen —{" "}
                 <span className="text-emerald-400 font-medium">{paidRows.length} bezahlt</span>
-                {skippedRows.length > 0 && (
-                  <>, {skippedRows.length} übersprungen</>
-                )}
+                {skippedRows.length > 0 && <>, {skippedRows.length} übersprungen</>}
               </span>
             </div>
             <button onClick={fullReset} className="text-muted-foreground hover:text-foreground">
@@ -294,16 +326,14 @@ export function ZahlungsabgleichWizard() {
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.slice(0, 20).map((r, i) => (
-                  <tr key={i} className={cn(r.status !== "paid" && "opacity-50 bg-muted/20")}>
-                    <td className="px-3 py-2 tabular-nums font-mono">{r.order_id}</td>
+                  <tr key={i} className={cn(r.status !== "paid" && "opacity-40")}>
+                    <td className="px-3 py-2 font-mono">{r.order_id}</td>
                     <td className="px-3 py-2">
                       <span className={cn(
                         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        r.status === "paid"
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : r.status === "refunded"
-                          ? "bg-amber-500/15 text-amber-400"
-                          : "bg-rose-500/15 text-rose-400",
+                        r.status === "paid" ? "bg-emerald-500/15 text-emerald-400"
+                          : r.status === "refunded" ? "bg-amber-500/15 text-amber-400"
+                          : "bg-muted text-muted-foreground",
                       )}>
                         {STATUS_LABEL[r.status]}
                       </span>
@@ -314,11 +344,7 @@ export function ZahlungsabgleichWizard() {
                   </tr>
                 ))}
                 {rows.length > 20 && (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-2 text-center text-muted-foreground">
-                      + {rows.length - 20} weitere…
-                    </td>
-                  </tr>
+                  <tr><td colSpan={3} className="px-3 py-2 text-center text-muted-foreground">+ {rows.length - 20} weitere…</td></tr>
                 )}
               </tbody>
             </table>
@@ -326,9 +352,7 @@ export function ZahlungsabgleichWizard() {
 
           <div className="flex gap-3">
             <Button onClick={handleProcess} disabled={pending || paidRows.length === 0}>
-              {pending
-                ? "Wird abgeglichen…"
-                : `${paidRows.length} Zahlungen abgleichen`}
+              {pending ? "Wird abgeglichen…" : `${paidRows.length} Zahlungen abgleichen`}
             </Button>
             <Button variant="outline" onClick={fullReset}>Abbrechen</Button>
           </div>
@@ -350,7 +374,7 @@ export function ZahlungsabgleichWizard() {
                 : <AlertTriangle className="h-4 w-4 text-amber-400" />}
               <span className="text-sm font-medium">
                 {result.updated} Zahlungen aktualisiert
-                {result.skipped > 0 && `, ${result.skipped} übersprungen (nicht bezahlt)`}
+                {result.skipped > 0 && `, ${result.skipped} übersprungen`}
               </span>
             </div>
             {result.notFound.length > 0 && (

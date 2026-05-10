@@ -306,6 +306,55 @@ export async function deleteDeal(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// setDealEscalation
+// ---------------------------------------------------------------------------
+
+export async function setDealEscalation(
+  dealId: string,
+  mahnung: boolean,
+  inkasso: boolean,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("deals")
+    .update({ mahnung_required: mahnung, inkasso_required: inkasso })
+    .eq("id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  revalidatePath("/deals");
+  revalidatePath("/forderungsmanagement/mahnung");
+  revalidatePath("/forderungsmanagement/inkasso");
+  if (error) return { error: error.message };
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// updateDealNote
+// ---------------------------------------------------------------------------
+
+export async function updateDealNote(
+  dealId: string,
+  notes: string,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("deals")
+    .update({ notes: notes.trim() || null })
+    .eq("id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  revalidatePath("/forderungsmanagement/mahnung");
+  if (error) return { error: error.message };
+  return {};
+}
+
+// ---------------------------------------------------------------------------
 // markInstallmentPaid / unmarkInstallmentPaid
 // ---------------------------------------------------------------------------
 

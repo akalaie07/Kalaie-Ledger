@@ -10,6 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DealRowActions } from "./_components/deal-row-actions";
 import { DealFilterTabs } from "./_components/deal-filter-tabs";
+import { DealSearch } from "./_components/deal-search";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
 
@@ -65,7 +66,7 @@ export default async function DealsPage({
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
-  const { filter = "alle" } = await searchParams;
+  const { filter = "alle", q = "" } = await searchParams;
   const session = await requireSession();
   const supabase = await createClient();
 
@@ -73,7 +74,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, inkasso_required, onboarding_done, order_id, platforms(name), products(name), closers(name), sales_partners(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, order_id, platforms(name), products(name), closers(name), sales_partners(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -93,10 +94,21 @@ export default async function DealsPage({
     else if (cat === "mcc") counts.mcc++;
   }
 
-  // Apply filter
-  const rows = filter === "msm" || filter === "mcc"
+  // Apply category filter
+  const categoryRows = filter === "msm" || filter === "mcc"
     ? allRows.filter((d) => getCategory(d.products?.name) === filter)
     : allRows;
+
+  // Apply search filter
+  const searchQuery = q.toLowerCase().trim();
+  const rows = searchQuery
+    ? categoryRows.filter((d) =>
+        d.customer_name.toLowerCase().includes(searchQuery) ||
+        (d.order_id ?? "").toLowerCase().includes(searchQuery) ||
+        (d.products?.name ?? "").toLowerCase().includes(searchQuery) ||
+        (d.closers?.name ?? "").toLowerCase().includes(searchQuery),
+      )
+    : categoryRows;
 
   const dealIds = rows.map((d) => d.id);
 
@@ -141,8 +153,11 @@ export default async function DealsPage({
         </Link>
       </div>
 
-      {/* Filter tabs */}
-      <DealFilterTabs active={filter} counts={counts} />
+      {/* Filter tabs + Search */}
+      <div className="flex items-center justify-between gap-4">
+        <DealFilterTabs active={filter} counts={counts} />
+        <DealSearch filter={filter} defaultValue={q || undefined} />
+      </div>
 
       {/* KPI cards */}
       {rows.length > 0 && (
@@ -184,6 +199,11 @@ export default async function DealsPage({
                   {deal.inkasso_required && (
                     <span className="ml-2 inline-flex items-center rounded-full bg-rose-500/15 px-1.5 py-0.5 text-xs font-medium text-rose-400">
                       Inkasso
+                    </span>
+                  )}
+                  {!deal.inkasso_required && deal.mahnung_required && (
+                    <span className="ml-2 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-400">
+                      Mahnung
                     </span>
                   )}
                 </td>
@@ -246,7 +266,11 @@ export default async function DealsPage({
                 </td>
                 {isAdmin && (
                   <td className="px-3 py-3">
-                    <DealRowActions dealId={deal.id} />
+                    <DealRowActions
+                      dealId={deal.id}
+                      mahnungRequired={deal.mahnung_required ?? false}
+                      inkassoRequired={deal.inkasso_required}
+                    />
                   </td>
                 )}
               </tr>
