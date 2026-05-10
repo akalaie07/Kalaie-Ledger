@@ -38,7 +38,7 @@ export default async function StammdatenPage() {
         .order("name"),
       supabase
         .from("products")
-        .select("id, name, default_price, active")
+        .select("id, name, default_price, active, product_type")
         .eq("organization_id", orgId)
         .order("name"),
       supabase

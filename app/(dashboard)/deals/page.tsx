@@ -27,10 +27,13 @@ function fmt(v: number) {
 
 type Category = "msm_gold" | "msm_silber" | "msm_bronze" | "msm_alt" | "msm" | "mcc_monatlich" | "mcc_jaehrlich" | "mcc" | "andere";
 
-function getCategory(productName?: string | null): Category {
+function getCategory(productName?: string | null, productType?: string | null): Category {
   if (!productName) return "andere";
   const name = productName.toLowerCase();
   if (name.includes("maestro champion circle") || name.includes("sales maestro circle") || /\bmcc\b/.test(name)) {
+    // MCC sub-type comes from product_type field (clean), fallback to name matching
+    if (productType === "subscription_monthly") return "mcc_monatlich";
+    if (productType === "subscription_yearly") return "mcc_jaehrlich";
     if (name.includes("monatl") || name.includes("monthly")) return "mcc_monatlich";
     if (name.includes("jährlich") || name.includes("jaehrlich") || name.includes("yearly") || name.includes("annual")) return "mcc_jaehrlich";
     return "mcc";
@@ -96,7 +99,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, update_call_done, order_id, notes, down_payment, platforms(name), products(name), closers(name), sales_partners(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, update_call_done, order_id, notes, down_payment, platforms(name), products(name, product_type), closers(name), sales_partners(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -121,7 +124,7 @@ export default async function DealsPage({
     counts.mcc_monatlich = 0;
     counts.mcc_jaehrlich = 0;
     for (const d of allRows) {
-      const cat = getCategory(d.products?.name);
+      const cat = getCategory(d.products?.name, (d.products as Record<string, unknown>)?.product_type as string | null);
       if (isMccCategory(cat)) {
         counts.mcc++; // MCC Gesamt
         if (cat === "mcc_monatlich") counts.mcc_monatlich++;
@@ -141,13 +144,13 @@ export default async function DealsPage({
   const MCC_SUB_FILTERS = ["mcc_monatlich", "mcc_jaehrlich"];
   const categoryRows = showProductFilter
     ? filter === "msm"
-      ? allRows.filter((d) => isMsmCategory(getCategory(d.products?.name)))
+      ? allRows.filter((d) => isMsmCategory(getCategory(d.products?.name, (d.products as Record<string, unknown>)?.product_type as string | null)))
       : filter === "mcc"
-      ? allRows.filter((d) => isMccCategory(getCategory(d.products?.name)))
+      ? allRows.filter((d) => isMccCategory(getCategory(d.products?.name, (d.products as Record<string, unknown>)?.product_type as string | null)))
       : MSM_SUB_FILTERS.includes(filter)
-      ? allRows.filter((d) => getCategory(d.products?.name) === filter)
+      ? allRows.filter((d) => getCategory(d.products?.name, (d.products as Record<string, unknown>)?.product_type as string | null) === filter)
       : MCC_SUB_FILTERS.includes(filter)
-      ? allRows.filter((d) => getCategory(d.products?.name) === filter)
+      ? allRows.filter((d) => getCategory(d.products?.name, (d.products as Record<string, unknown>)?.product_type as string | null) === filter)
       : allRows
     : allRows;
 

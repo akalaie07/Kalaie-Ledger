@@ -22,7 +22,7 @@ export default async function NewDealPage() {
       .order("name"),
     supabase
       .from("products")
-      .select("id, name")
+      .select("id, name, product_type")
       .eq("organization_id", orgId)
       .eq("active", true)
       .order("name"),
@@ -55,7 +55,7 @@ export default async function NewDealPage() {
 
       <DealForm
         platforms={(platforms.data ?? []) as { id: string; name: string }[]}
-        products={(products.data ?? []) as { id: string; name: string }[]}
+        products={(products.data ?? []) as { id: string; name: string; product_type: string }[]}
         closers={(closers.data ?? []) as { id: string; name: string }[]}
         salesPartners={
           (salesPartners.data ?? []) as { id: string; name: string }[]

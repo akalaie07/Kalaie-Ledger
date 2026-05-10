@@ -13,9 +13,15 @@ interface Option {
   name: string;
 }
 
+interface ProductOption {
+  id: string;
+  name: string;
+  product_type: "standard" | "subscription_monthly" | "subscription_yearly";
+}
+
 interface DealFormProps {
   platforms: Option[];
-  products: Option[];
+  products: ProductOption[];
   closers: Option[];
   salesPartners: Option[];
 }
@@ -84,6 +90,21 @@ export function DealForm({
   const [totalPrice, setTotalPrice] = useState<number>(0);
   const [downPayment, setDownPayment] = useState<number>(0);
   const [numberOfRates, setNumberOfRates] = useState<number>(0);
+  const [selectedProductType, setSelectedProductType] = useState<"standard" | "subscription_monthly" | "subscription_yearly">("standard");
+
+  const isSubscription = selectedProductType === "subscription_monthly" || selectedProductType === "subscription_yearly";
+
+  function handleProductChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const product = products.find((p) => p.id === e.target.value);
+    const pt = product?.product_type ?? "standard";
+    setSelectedProductType(pt);
+    if (pt === "subscription_monthly" || pt === "subscription_yearly") {
+      setPaymentType("installments");
+    }
+  }
+
+  const subscriptionLabel = selectedProductType === "subscription_monthly" ? "Monatliche Zahlung" : "Jährliche Zahlung";
+  const ratenLabel = selectedProductType === "subscription_monthly" ? "Laufzeit (Monate)" : selectedProductType === "subscription_yearly" ? "Laufzeit (Jahre)" : "Anzahl Raten";
 
   const fe = state?.fieldErrors ?? {};
 
@@ -122,12 +143,25 @@ export function DealForm({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormSelect
-            name="product_id"
-            label="Produkt"
-            options={products}
-            error={fe.product_id?.[0]}
-          />
+          <div className="space-y-1.5">
+            <Label htmlFor="product_id">Produkt</Label>
+            <select
+              id="product_id"
+              name="product_id"
+              onChange={handleProductChange}
+              className={cn(
+                "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                fe.product_id && "border-destructive",
+              )}
+            >
+              <option value="">— keine —</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            {fe.product_id && <p className="text-xs text-destructive">{fe.product_id[0]}</p>}
+          </div>
           <FormSelect
             name="platform_id"
             label="Plattform"
@@ -189,18 +223,25 @@ export function DealForm({
             <Label htmlFor="payment_type">
               Zahlungsart <span className="text-destructive">*</span>
             </Label>
-            <select
-              id="payment_type"
-              name="payment_type"
-              value={paymentType}
-              onChange={(e) =>
-                setPaymentType(e.target.value as "one_time" | "installments")
-              }
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="one_time">Einmalzahlung</option>
-              <option value="installments">Ratenzahlung</option>
-            </select>
+            {isSubscription ? (
+              <>
+                <input type="hidden" name="payment_type" value="installments" />
+                <div className="flex h-9 items-center rounded-md border border-violet-500/30 bg-violet-500/10 px-3 text-sm text-violet-300">
+                  Abo — {subscriptionLabel}
+                </div>
+              </>
+            ) : (
+              <select
+                id="payment_type"
+                name="payment_type"
+                value={paymentType}
+                onChange={(e) => setPaymentType(e.target.value as "one_time" | "installments")}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="one_time">Einmalzahlung</option>
+                <option value="installments">Ratenzahlung</option>
+              </select>
+            )}
           </div>
         </div>
 
@@ -255,7 +296,7 @@ export function DealForm({
             <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/20 p-4">
               <div className="space-y-1.5">
                 <Label htmlFor="number_of_rates">
-                  Anzahl Raten <span className="text-destructive">*</span>
+                  {ratenLabel} <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="number_of_rates"

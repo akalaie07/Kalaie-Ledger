@@ -6,26 +6,52 @@ import type { LookupAction, LookupActionState } from "@/lib/actions/stammdaten";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { FieldError, StatusBadge, ToggleButton } from "./shared";
+
+export type ProductType = "standard" | "subscription_monthly" | "subscription_yearly";
 
 export type Product = {
   id: string;
   name: string;
   default_price: number | null;
   active: boolean;
+  product_type: ProductType;
 };
+
+const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
+  standard: "Einmalkauf",
+  subscription_monthly: "Abo — Monatlich",
+  subscription_yearly: "Abo — Jährlich",
+};
+
+const PRODUCT_TYPE_COLORS: Record<ProductType, string> = {
+  standard: "bg-blue-500/15 text-blue-400",
+  subscription_monthly: "bg-violet-500/15 text-violet-400",
+  subscription_yearly: "bg-amber-500/15 text-amber-400",
+};
+
+function ProductTypeBadge({ type }: { type: ProductType }) {
+  return (
+    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", PRODUCT_TYPE_COLORS[type])}>
+      {PRODUCT_TYPE_LABELS[type]}
+    </span>
+  );
+}
 
 function ProductForm({
   action,
   itemId,
   defaultName = "",
   defaultPrice = "",
+  defaultProductType = "standard",
   onDone,
 }: {
   action: LookupAction;
   itemId?: string;
   defaultName?: string;
   defaultPrice?: string;
+  defaultProductType?: ProductType;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<LookupActionState, FormData>(
@@ -41,6 +67,7 @@ function ProductForm({
     <form action={formAction} className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
       {itemId && <input type="hidden" name="id" value={itemId} />}
       {state?.error && <p className="text-xs text-destructive">{state.error}</p>}
+
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor={`pr-name-${itemId ?? "new"}`}>Name</Label>
@@ -54,9 +81,7 @@ function ProductForm({
           <FieldError errors={state?.fieldErrors?.name} />
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`pr-price-${itemId ?? "new"}`}>
-            Standardpreis (€)
-          </Label>
+          <Label htmlFor={`pr-price-${itemId ?? "new"}`}>Standardpreis (€)</Label>
           <Input
             id={`pr-price-${itemId ?? "new"}`}
             name="default_price"
@@ -70,6 +95,22 @@ function ProductForm({
           <FieldError errors={state?.fieldErrors?.default_price} />
         </div>
       </div>
+
+      <div className="space-y-1">
+        <Label htmlFor={`pr-type-${itemId ?? "new"}`}>Produktart</Label>
+        <select
+          id={`pr-type-${itemId ?? "new"}`}
+          name="product_type"
+          defaultValue={defaultProductType}
+          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <option value="standard">Einmalkauf</option>
+          <option value="subscription_monthly">Abo — Monatlich</option>
+          <option value="subscription_yearly">Abo — Jährlich</option>
+        </select>
+        <FieldError errors={state?.fieldErrors?.product_type} />
+      </div>
+
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
           {pending ? "Speichern…" : "Speichern"}
@@ -129,9 +170,8 @@ export function ProductsSection({
                 action={updateAction}
                 itemId={item.id}
                 defaultName={item.name}
-                defaultPrice={
-                  item.default_price != null ? String(item.default_price) : ""
-                }
+                defaultPrice={item.default_price != null ? String(item.default_price) : ""}
+                defaultProductType={item.product_type}
                 onDone={() => setEditingId(null)}
               />
             ) : (
@@ -141,14 +181,11 @@ export function ProductsSection({
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {formatPrice(item.default_price)}
                   </span>
+                  <ProductTypeBadge type={item.product_type} />
                   <StatusBadge active={item.active} />
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingId(item.id)}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setEditingId(item.id)}>
                     Bearbeiten
                   </Button>
                   <ToggleButton id={item.id} active={item.active} action={toggleAction} />

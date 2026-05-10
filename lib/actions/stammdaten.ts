@@ -117,12 +117,15 @@ export async function togglePlatform(
 // Products
 // ===========================================================================
 
+const PRODUCT_TYPES = ["standard", "subscription_monthly", "subscription_yearly"] as const;
+
 const ProductSchema = z.object({
   name: z.string().min(1, "Name erforderlich.").max(100).trim(),
   default_price: z.preprocess(
     (v) => (v === "" || v == null ? null : Number(v)),
     z.number().nonnegative("Preis muss ≥ 0 sein.").nullable(),
   ),
+  product_type: z.enum(PRODUCT_TYPES).default("standard"),
 });
 
 export async function createProduct(
@@ -135,6 +138,7 @@ export async function createProduct(
   const r = ProductSchema.safeParse({
     name: fd.get("name"),
     default_price: fd.get("default_price"),
+    product_type: fd.get("product_type") || "standard",
   });
   if (!r.success) return { ok: false, fieldErrors: r.error.flatten().fieldErrors };
 
@@ -158,6 +162,7 @@ export async function updateProduct(
   const r = ProductSchema.safeParse({
     name: fd.get("name"),
     default_price: fd.get("default_price"),
+    product_type: fd.get("product_type") || "standard",
   });
   if (!r.success) return { ok: false, fieldErrors: r.error.flatten().fieldErrors };
 

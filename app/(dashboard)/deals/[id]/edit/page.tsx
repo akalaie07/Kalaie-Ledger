@@ -36,7 +36,7 @@ export default async function DealEditPage({
         .order("name"),
       supabase
         .from("products")
-        .select("id, name")
+        .select("id, name, product_type")
         .eq("organization_id", session.organizationId)
         .eq("active", true)
         .order("name"),
