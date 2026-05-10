@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { getCurrentSession } from "@/lib/auth/get-current-org";
 import { toggleOrgFeature } from "@/lib/actions/super-admin";
 import { AVAILABLE_FEATURES } from "@/lib/features";
@@ -19,7 +19,7 @@ export default async function OrgFeaturesPage({
   const session = await getCurrentSession();
   if (!session?.isSuperAdmin) notFound();
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data: org } = await supabase
     .from("organizations")
     .select("id, name, slug, settings")

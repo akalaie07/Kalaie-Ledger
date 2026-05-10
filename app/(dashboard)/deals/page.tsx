@@ -25,24 +25,32 @@ function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
 }
 
-type Category = "msm_gold" | "msm_silber" | "msm_bronze" | "msm_alt" | "msm" | "mcc" | "andere";
+type Category = "msm_gold" | "msm_silber" | "msm_bronze" | "msm_alt" | "msm" | "mcc_monatlich" | "mcc_jaehrlich" | "mcc" | "andere";
 
 function getCategory(productName?: string | null): Category {
   if (!productName) return "andere";
   const name = productName.toLowerCase();
-  if (name.includes("maestro champion circle") || name.includes("sales maestro circle") || /\bmcc\b/.test(name)) return "mcc";
+  if (name.includes("maestro champion circle") || name.includes("sales maestro circle") || /\bmcc\b/.test(name)) {
+    if (name.includes("monatl") || name.includes("monthly")) return "mcc_monatlich";
+    if (name.includes("jährlich") || name.includes("jaehrlich") || name.includes("yearly") || name.includes("annual")) return "mcc_jaehrlich";
+    return "mcc";
+  }
   if (name.includes("maestro sales masterclass") || /\bmsm\b/.test(name)) {
     if (name.includes("gold")) return "msm_gold";
     if (name.includes("silber") || name.includes("silver")) return "msm_silber";
     if (name.includes("bronze")) return "msm_bronze";
     if (name.includes("alt") || name.includes("legacy") || name.includes("classic")) return "msm_alt";
-    return "msm"; // generic MSM without sub-type
+    return "msm";
   }
   return "andere";
 }
 
 function isMsmCategory(cat: Category): boolean {
   return cat === "msm" || cat === "msm_gold" || cat === "msm_silber" || cat === "msm_bronze" || cat === "msm_alt";
+}
+
+function isMccCategory(cat: Category): boolean {
+  return cat === "mcc" || cat === "mcc_monatlich" || cat === "mcc_jaehrlich";
 }
 
 function KpiCard({
@@ -110,10 +118,14 @@ export default async function DealsPage({
     counts.msm_silber = 0;
     counts.msm_bronze = 0;
     counts.msm_alt = 0;
+    counts.mcc_monatlich = 0;
+    counts.mcc_jaehrlich = 0;
     for (const d of allRows) {
       const cat = getCategory(d.products?.name);
-      if (cat === "mcc") {
-        counts.mcc++;
+      if (isMccCategory(cat)) {
+        counts.mcc++; // MCC Gesamt
+        if (cat === "mcc_monatlich") counts.mcc_monatlich++;
+        else if (cat === "mcc_jaehrlich") counts.mcc_jaehrlich++;
       } else if (isMsmCategory(cat)) {
         counts.msm++; // MSM Gesamt
         if (cat === "msm_gold") counts.msm_gold++;
@@ -126,12 +138,15 @@ export default async function DealsPage({
 
   // Apply category filter (nur wenn Feature aktiv)
   const MSM_SUB_FILTERS = ["msm_gold", "msm_silber", "msm_bronze", "msm_alt"];
+  const MCC_SUB_FILTERS = ["mcc_monatlich", "mcc_jaehrlich"];
   const categoryRows = showProductFilter
     ? filter === "msm"
       ? allRows.filter((d) => isMsmCategory(getCategory(d.products?.name)))
       : filter === "mcc"
-      ? allRows.filter((d) => getCategory(d.products?.name) === "mcc")
+      ? allRows.filter((d) => isMccCategory(getCategory(d.products?.name)))
       : MSM_SUB_FILTERS.includes(filter)
+      ? allRows.filter((d) => getCategory(d.products?.name) === filter)
+      : MCC_SUB_FILTERS.includes(filter)
       ? allRows.filter((d) => getCategory(d.products?.name) === filter)
       : allRows
     : allRows;
@@ -160,13 +175,14 @@ export default async function DealsPage({
   const otpMap = new Map<string, boolean>();
   for (const o of oneTimePayments ?? []) otpMap.set(o.deal_id, o.paid);
 
-  const instMap = new Map<string, { total: number; paid: number; perRate: number }>();
+  const instMap = new Map<string, { total: number; paid: number; perRate: number; openAmount: number }>();
   for (const i of installmentRows ?? []) {
-    const cur = instMap.get(i.deal_id) ?? { total: 0, paid: 0, perRate: 0 };
+    const cur = instMap.get(i.deal_id) ?? { total: 0, paid: 0, perRate: 0, openAmount: 0 };
     instMap.set(i.deal_id, {
       total: cur.total + 1,
       paid: cur.paid + (i.paid ? 1 : 0),
       perRate: cur.total === 0 ? (i.amount ?? 0) : cur.perRate, // erste Rate als Referenz
+      openAmount: cur.openAmount + (!i.paid ? (i.amount ?? 0) : 0),
     });
   }
 
@@ -264,23 +280,33 @@ export default async function DealsPage({
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <Link href={`/deals/${deal.id}`} className="block space-y-0.5">
+                  <Link href={`/deals/${deal.id}`} className="block space-y-1">
                     {deal.payment_type === "one_time" ? (
-                      <>
-                        <span className={cn(
-                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                          otpMap.get(deal.id)
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : "bg-rose-500/15 text-rose-400",
-                        )}>
-                          {otpMap.get(deal.id) ? "Bezahlt" : "Offen"}
-                        </span>
-                        {(deal as Record<string, unknown>).down_payment ? (
-                          <p className="text-xs text-muted-foreground">
-                            AZ: {fmt((deal as Record<string, unknown>).down_payment as number)}
-                          </p>
-                        ) : null}
-                      </>
+                      (() => {
+                        const isPaid = otpMap.get(deal.id) ?? false;
+                        const dp = (deal as Record<string, unknown>).down_payment as number | null;
+                        const openAmt = isPaid ? 0 : (deal.total_price as number) - (dp ?? 0);
+                        return (
+                          <>
+                            <div className="flex flex-wrap gap-1">
+                              <span className={cn(
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                                isPaid ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400",
+                              )}>
+                                {isPaid ? "Bezahlt" : "Offen"}
+                              </span>
+                              {dp ? (
+                                <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                                  AZ {fmt(dp)}
+                                </span>
+                              ) : null}
+                            </div>
+                            {!isPaid && openAmt > 0 && (
+                              <p className="text-xs text-rose-400/80">{fmt(openAmt)} offen</p>
+                            )}
+                          </>
+                        );
+                      })()
                     ) : (
                       (() => {
                         const inst = instMap.get(deal.id);
@@ -288,22 +314,32 @@ export default async function DealsPage({
                         const total = inst?.total ?? 0;
                         const done = paid === total && total > 0;
                         const perRate = inst?.perRate ?? 0;
+                        const openAmount = inst?.openAmount ?? 0;
                         const dp = (deal as Record<string, unknown>).down_payment as number | null;
                         return (
                           <>
-                            <span className={cn(
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                              done
-                                ? "bg-emerald-500/15 text-emerald-400"
-                                : paid > 0
-                                ? "bg-amber-500/15 text-amber-400"
-                                : "bg-rose-500/15 text-rose-400",
-                            )}>
-                              {paid}/{total} Raten
-                            </span>
-                            <div className="text-xs text-muted-foreground space-x-1.5">
+                            <div className="flex flex-wrap gap-1">
+                              <span className={cn(
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                                done
+                                  ? "bg-emerald-500/15 text-emerald-400"
+                                  : paid > 0
+                                  ? "bg-amber-500/15 text-amber-400"
+                                  : "bg-rose-500/15 text-rose-400",
+                              )}>
+                                {paid}/{total} Raten
+                              </span>
+                              {dp ? (
+                                <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                                  AZ {fmt(dp)}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
                               {perRate > 0 && <span>{fmt(perRate)}/Rate</span>}
-                              {dp ? <span>AZ: {fmt(dp)}</span> : null}
+                              {!done && openAmount > 0 && (
+                                <span className="text-rose-400/80">{fmt(openAmount)} offen</span>
+                              )}
                             </div>
                           </>
                         );
