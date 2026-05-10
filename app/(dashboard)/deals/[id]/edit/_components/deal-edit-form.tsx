@@ -90,6 +90,7 @@ export function DealEditForm({
     updateDealWithId,
     null,
   );
+  const [paymentType, setPaymentType] = useState<"one_time" | "installments">(initial.payment_type);
   const [hasAnzahlung, setHasAnzahlung] = useState(initial.down_payment != null);
   const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
 
@@ -192,7 +193,8 @@ export function DealEditForm({
             <select
               id="payment_type"
               name="payment_type"
-              defaultValue={initial.payment_type}
+              value={paymentType}
+              onChange={(e) => setPaymentType(e.target.value as "one_time" | "installments")}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="one_time">Einmalzahlung</option>
@@ -233,7 +235,7 @@ export function DealEditForm({
         </div>
 
         {/* Fälligkeitsdatum Einmalzahlung */}
-        {initial.payment_type === "one_time" && (
+        {paymentType === "one_time" && (
           <div className="space-y-1.5">
             <Label htmlFor="one_time_due_date">Zahlung fällig zum</Label>
             <Input
@@ -247,9 +249,36 @@ export function DealEditForm({
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground">
-          Hinweis: Änderungen an der Zahlungsart betreffen keine bestehenden Raten.
-        </p>
+        {/* Raten-Felder */}
+        {paymentType === "installments" && (
+          <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/20 p-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="number_of_rates">Anzahl Raten</Label>
+              <Input
+                id="number_of_rates"
+                name="number_of_rates"
+                type="number"
+                min="2"
+                aria-invalid={!!fe.number_of_rates}
+                placeholder="z.B. 3"
+              />
+              <FieldError msg={fe.number_of_rates?.[0]} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="first_due_date">Erstes Fälligkeitsdatum</Label>
+              <Input
+                id="first_due_date"
+                name="first_due_date"
+                type="date"
+                aria-invalid={!!fe.first_due_date}
+              />
+              <FieldError msg={fe.first_due_date?.[0]} />
+            </div>
+            <p className="col-span-2 text-xs text-muted-foreground">
+              Nur ausfüllen, um bestehende Raten neu zu generieren.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Team */}

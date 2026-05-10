@@ -12,6 +12,7 @@ import {
   Upload,
   Users,
   MessageSquare,
+  RefreshCw,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -61,6 +62,12 @@ const navItems = [
     href: "/import",
     label: "Importieren",
     icon: Upload,
+    roles: ["admin"] as Role[],
+  },
+  {
+    href: "/zahlungsabgleich",
+    label: "Zahlungsabgleich",
+    icon: RefreshCw,
     roles: ["admin"] as Role[],
   },
   {

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DealRowActions } from "./_components/deal-row-actions";
+import { DealFilterTabs } from "./_components/deal-filter-tabs";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
 
@@ -19,6 +20,14 @@ const PAYMENT_LABEL: Record<string, string> = {
 
 function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
+}
+
+function getCategory(productName?: string | null): "msm" | "mcc" | "andere" {
+  if (!productName) return "andere";
+  const name = productName.toLowerCase();
+  if (name.includes("maestro champion circle") || name.includes("sales maestro circle")) return "mcc";
+  if (name.includes("maestro sales masterclass")) return "msm";
+  return "andere";
 }
 
 function KpiCard({
@@ -51,7 +60,12 @@ function KpiCard({
   );
 }
 
-export default async function DealsPage() {
+export default async function DealsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string>>;
+}) {
+  const { filter = "alle" } = await searchParams;
   const session = await requireSession();
   const supabase = await createClient();
 
@@ -69,7 +83,22 @@ export default async function DealsPage() {
       .eq("organization_id", session.organizationId),
   ]);
 
-  const dealIds = (deals ?? []).map((d) => d.id);
+  const allRows = deals ?? [];
+
+  // Count per category
+  const counts = { alle: allRows.length, msm: 0, mcc: 0 };
+  for (const d of allRows) {
+    const cat = getCategory(d.products?.name);
+    if (cat === "msm") counts.msm++;
+    else if (cat === "mcc") counts.mcc++;
+  }
+
+  // Apply filter
+  const rows = filter === "msm" || filter === "mcc"
+    ? allRows.filter((d) => getCategory(d.products?.name) === filter)
+    : allRows;
+
+  const dealIds = rows.map((d) => d.id);
 
   const [{ data: oneTimePayments }, { data: installmentRows }] = dealIds.length > 0
     ? await Promise.all([
@@ -88,7 +117,6 @@ export default async function DealsPage() {
     instMap.set(i.deal_id, { total: cur.total + 1, paid: cur.paid + (i.paid ? 1 : 0) });
   }
 
-  const rows = deals ?? [];
   const bal = balance ?? [];
   const isAdmin = session.role === "admin";
 
@@ -112,6 +140,9 @@ export default async function DealsPage() {
           Neuer Deal
         </Link>
       </div>
+
+      {/* Filter tabs */}
+      <DealFilterTabs active={filter} counts={counts} />
 
       {/* KPI cards */}
       {rows.length > 0 && (
@@ -223,10 +254,14 @@ export default async function DealsPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
-                  Noch keine Deals vorhanden.{" "}
-                  <Link href="/deals/new" className="text-foreground underline-offset-4 hover:underline">
-                    Ersten Deal anlegen
-                  </Link>
+                  {filter !== "alle"
+                    ? `Keine ${filter.toUpperCase()}-Deals vorhanden.`
+                    : <>Noch keine Deals vorhanden.{" "}
+                        <Link href="/deals/new" className="text-foreground underline-offset-4 hover:underline">
+                          Ersten Deal anlegen
+                        </Link>
+                      </>
+                  }
                 </td>
               </tr>
             )}
