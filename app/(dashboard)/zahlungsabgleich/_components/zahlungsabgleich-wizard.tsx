@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Upload, FileText, AlertTriangle, CheckCircle, X } from "lucide-react";
+import { Upload, FileText, AlertTriangle, CheckCircle, X, PlusCircle } from "lucide-react";
+
+import Link from "next/link";
 
 import {
   processZahlungsabgleich,
@@ -374,13 +376,32 @@ export function ZahlungsabgleichWizard() {
                 : <AlertTriangle className="h-4 w-4 text-amber-400" />}
               <span className="text-sm font-medium">
                 {result.updated} Zahlungen aktualisiert
+                {result.created > 0 && `, ${result.created} neu angelegt`}
                 {result.skipped > 0 && `, ${result.skipped} übersprungen`}
               </span>
             </div>
+
+            {result.created > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+                <PlusCircle className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-blue-400 space-y-1">
+                  <p className="font-medium">
+                    {result.created} {result.created === 1 ? "Deal wurde" : "Deals wurden"} automatisch angelegt.
+                  </p>
+                  <p className="text-blue-400/70">
+                    Kunde, Preis und weitere Infos müssen noch manuell ergänzt werden.{" "}
+                    <Link href="/deals" className="underline underline-offset-2 hover:text-blue-300">
+                      Zu den Deals →
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            )}
+
             {result.notFound.length > 0 && (
               <div className="space-y-1">
-                <p className="text-xs font-medium text-amber-400">Bestell-IDs nicht in Deals gefunden:</p>
-                <ul className="space-y-0.5 text-xs text-amber-400/80">
+                <p className="text-xs font-medium text-rose-400">Bestell-IDs konnten nicht angelegt werden:</p>
+                <ul className="space-y-0.5 text-xs text-rose-400/80">
                   {result.notFound.map((id) => <li key={id} className="font-mono">• {id}</li>)}
                 </ul>
               </div>

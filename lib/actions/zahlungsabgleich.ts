@@ -14,18 +14,19 @@ export type AbgleichRow = {
 export type AbgleichResult = {
   updated: number;
   skipped: number;
+  created: number;
   notFound: string[];
   errors: string[];
 };
 
 export async function processZahlungsabgleich(rows: AbgleichRow[]): Promise<AbgleichResult> {
   const session = await getCurrentSession();
-  if (!session) return { updated: 0, skipped: 0, notFound: [], errors: ["Nicht angemeldet."] };
+  if (!session) return { updated: 0, skipped: 0, created: 0, notFound: [], errors: ["Nicht angemeldet."] };
 
   const supabase = await createClient();
 
   const paidRows = rows.filter((r) => r.status === "paid");
-  if (paidRows.length === 0) return { updated: 0, skipped: rows.length, notFound: [], errors: [] };
+  if (paidRows.length === 0) return { updated: 0, skipped: rows.length, created: 0, notFound: [], errors: [] };
 
   const orderIds = [...new Set(paidRows.map((r) => r.order_id))];
 
@@ -41,16 +42,79 @@ export async function processZahlungsabgleich(rows: AbgleichRow[]): Promise<Abgl
     if (d.order_id) dealMap.set(d.order_id, { id: d.id, payment_type: d.payment_type });
   }
 
+  // Fetch platform IDs for auto-created deals
+  const { data: platforms } = await supabase
+    .from("platforms")
+    .select("id, name")
+    .eq("organization_id", session.organizationId);
+
+  const platformIdMap = new Map<string, string>();
+  for (const p of platforms ?? []) {
+    platformIdMap.set(p.name.toLowerCase(), p.id);
+  }
+
   const notFound: string[] = [];
   const errors: string[] = [];
   let updated = 0;
   let skipped = 0;
+  let created = 0;
 
   for (const row of paidRows) {
-    const deal = dealMap.get(row.order_id);
+    let deal = dealMap.get(row.order_id);
+
     if (!deal) {
-      if (!notFound.includes(row.order_id)) notFound.push(row.order_id);
-      continue;
+      // Deal not found — create a placeholder so the payment can be tracked
+      const hasSequence = !!row.installment_sequence;
+      const platformName =
+        row.platform === "copecart" ? "copecart"
+        : row.platform === "digistore" ? "digistore"
+        : "ablefy";
+      const platformId =
+        platformIdMap.get(platformName) ??
+        platformIdMap.get(row.platform) ??
+        null;
+
+      const { data: newDeal, error: createError } = await supabase
+        .from("deals")
+        .insert({
+          organization_id: session.organizationId,
+          created_by: session.userId,
+          customer_name: "Unbekannt – bitte ergänzen",
+          order_id: row.order_id,
+          platform_id: platformId,
+          total_price: 0,
+          payment_type: hasSequence ? "installments" : "one_time",
+          close_date: new Date().toISOString().slice(0, 10),
+        })
+        .select("id, payment_type")
+        .single();
+
+      if (createError || !newDeal) {
+        errors.push(`${row.order_id}: Deal konnte nicht angelegt werden.`);
+        if (!notFound.includes(row.order_id)) notFound.push(row.order_id);
+        continue;
+      }
+
+      created++;
+      deal = { id: newDeal.id, payment_type: newDeal.payment_type };
+      dealMap.set(row.order_id, deal);
+
+      // Create the corresponding payment record
+      if (deal.payment_type === "one_time") {
+        await supabase.from("one_time_payments").insert({
+          deal_id: newDeal.id,
+          organization_id: session.organizationId,
+          due_date: null,
+        });
+      } else if (hasSequence) {
+        await supabase.from("installments").insert({
+          deal_id: newDeal.id,
+          organization_id: session.organizationId,
+          sequence: row.installment_sequence!,
+          due_date: new Date().toISOString().slice(0, 10),
+          amount: 0,
+        });
+      }
     }
 
     if (deal.payment_type === "one_time") {
@@ -103,7 +167,7 @@ export async function processZahlungsabgleich(rows: AbgleichRow[]): Promise<Abgl
   skipped = rows.length - paidRows.length;
 
   revalidatePath("/deals");
-  revalidatePath("/zahlungsabgleich");
+  revalidatePath("/import/zahlungsabgleich");
 
-  return { updated, skipped, notFound, errors };
+  return { updated, skipped, created, notFound, errors };
 }
