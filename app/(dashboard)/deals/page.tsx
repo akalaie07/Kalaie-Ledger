@@ -109,7 +109,8 @@ export default async function DealsPage({
       .eq("organization_id", session.organizationId),
   ]);
 
-  const allRows = deals ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allRows = (deals ?? []) as any[];
   const showProductFilter = hasFeature(session, "msm_mcc_filter");
 
   // Count per category (nur wenn Feature aktiv)
