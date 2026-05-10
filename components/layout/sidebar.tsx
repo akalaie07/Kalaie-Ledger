@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   FileText,
   Settings,
@@ -12,7 +13,7 @@ import {
   Users,
   MessageSquare,
   Bell,
-  AlertTriangle,
+  ChevronRight,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -158,27 +159,38 @@ function NavGroup({
   groupActive: boolean;
   pathname: string;
 }) {
+  const [open, setOpen] = useState(groupActive);
+
   return (
     <div className="space-y-0.5">
-      <div
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
-          groupActive ? "text-accent-foreground" : "text-muted-foreground",
+          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          groupActive
+            ? "text-accent-foreground hover:bg-accent/50"
+            : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
         )}
       >
         <Icon className="h-4 w-4 shrink-0" />
-        {label}
-      </div>
-      <div className="ml-7 space-y-0.5 border-l border-border pl-3">
-        {children.map((child) => (
-          <NavChildLink
-            key={child.href}
-            href={child.href}
-            label={child.label}
-            active={pathname === child.href || pathname.startsWith(child.href + "/")}
-          />
-        ))}
-      </div>
+        <span className="flex-1 text-left">{label}</span>
+        <ChevronRight
+          className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-90")}
+        />
+      </button>
+      {open && (
+        <div className="ml-7 space-y-0.5 border-l border-border pl-3">
+          {children.map((child) => (
+            <NavChildLink
+              key={child.href}
+              href={child.href}
+              label={child.label}
+              active={pathname === child.href || pathname.startsWith(child.href + "/")}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
