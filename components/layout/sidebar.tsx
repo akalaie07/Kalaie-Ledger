@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   FileText,
   Settings,
@@ -174,7 +174,7 @@ function NavGroup({
         )}
       >
         <Icon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">{label}</span>
+        <span className="flex-1 truncate text-left">{label}</span>
         <ChevronRight
           className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-90")}
         />
@@ -195,13 +195,62 @@ function NavGroup({
   );
 }
 
+const MIN_WIDTH = 180;
+const MAX_WIDTH = 400;
+const DEFAULT_WIDTH = 224;
+const STORAGE_KEY = "sidebar-width";
+
 export function Sidebar({ orgName, fullName, email, role, currentUserId, organizationId, initialMembers }: SidebarProps) {
   const pathname = usePathname();
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const isResizing = useRef(false);
+  const startX = useRef(0);
+  const startWidth = useRef(0);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parseInt(saved, 10))));
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    startX.current = e.clientX;
+    startWidth.current = width;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + ev.clientX - startX.current));
+      setWidth(next);
+    };
+
+    const onUp = () => {
+      isResizing.current = false;
+      setWidth((prev) => { localStorage.setItem(STORAGE_KEY, String(prev)); return prev; });
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [width]);
 
   const visible = navItems.filter((item) => item.roles.includes(role));
 
   return (
-    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-card">
+    <aside
+      style={{ width }}
+      className="relative flex h-full shrink-0 flex-col border-r border-border bg-card"
+    >
+      {/* Drag handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-primary/30 active:bg-primary/50"
+      />
       <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
         <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="truncate text-sm font-semibold">{orgName}</span>
