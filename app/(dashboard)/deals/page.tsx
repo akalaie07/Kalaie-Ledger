@@ -26,8 +26,8 @@ function fmt(v: number) {
 function getCategory(productName?: string | null): "msm" | "mcc" | "andere" {
   if (!productName) return "andere";
   const name = productName.toLowerCase();
-  if (name.includes("maestro champion circle") || name.includes("sales maestro circle")) return "mcc";
-  if (name.includes("maestro sales masterclass")) return "msm";
+  if (name.includes("maestro champion circle") || name.includes("sales maestro circle") || /\bmcc\b/.test(name)) return "mcc";
+  if (name.includes("maestro sales masterclass") || /\bmsm\b/.test(name)) return "msm";
   return "andere";
 }
 
