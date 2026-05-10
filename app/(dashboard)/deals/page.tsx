@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus, TrendingUp, Clock, AlertTriangle, CheckCircle, NotebookPen } from "lucide-react";
+import { Plus, TrendingUp, Clock, AlertTriangle, CheckCircle, HandshakeIcon, PhoneCall, TriangleAlert, Gavel } from "lucide-react";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 
@@ -12,6 +12,7 @@ import { hasFeature } from "@/lib/features";
 import { DealRowActions } from "./_components/deal-row-actions";
 import { DealFilterTabs } from "./_components/deal-filter-tabs";
 import { DealSearch } from "./_components/deal-search";
+import { NotePopup } from "./_components/note-popup";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
 
@@ -24,12 +25,24 @@ function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
 }
 
-function getCategory(productName?: string | null): "msm" | "mcc" | "andere" {
+type Category = "msm_gold" | "msm_silber" | "msm_bronze" | "msm_alt" | "msm" | "mcc" | "andere";
+
+function getCategory(productName?: string | null): Category {
   if (!productName) return "andere";
   const name = productName.toLowerCase();
   if (name.includes("maestro champion circle") || name.includes("sales maestro circle") || /\bmcc\b/.test(name)) return "mcc";
-  if (name.includes("maestro sales masterclass") || /\bmsm\b/.test(name)) return "msm";
+  if (name.includes("maestro sales masterclass") || /\bmsm\b/.test(name)) {
+    if (name.includes("gold")) return "msm_gold";
+    if (name.includes("silber") || name.includes("silver")) return "msm_silber";
+    if (name.includes("bronze")) return "msm_bronze";
+    if (name.includes("alt") || name.includes("legacy") || name.includes("classic")) return "msm_alt";
+    return "msm"; // generic MSM without sub-type
+  }
   return "andere";
+}
+
+function isMsmCategory(cat: Category): boolean {
+  return cat === "msm" || cat === "msm_gold" || cat === "msm_silber" || cat === "msm_bronze" || cat === "msm_alt";
 }
 
 function KpiCard({
@@ -75,7 +88,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, order_id, notes, platforms(name), products(name), closers(name), sales_partners(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, update_call_done, order_id, notes, down_payment, platforms(name), products(name), closers(name), sales_partners(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -93,16 +106,34 @@ export default async function DealsPage({
   if (showProductFilter) {
     counts.msm = 0;
     counts.mcc = 0;
+    counts.msm_gold = 0;
+    counts.msm_silber = 0;
+    counts.msm_bronze = 0;
+    counts.msm_alt = 0;
     for (const d of allRows) {
       const cat = getCategory(d.products?.name);
-      if (cat === "msm") counts.msm++;
-      else if (cat === "mcc") counts.mcc++;
+      if (cat === "mcc") {
+        counts.mcc++;
+      } else if (isMsmCategory(cat)) {
+        counts.msm++; // MSM Gesamt
+        if (cat === "msm_gold") counts.msm_gold++;
+        else if (cat === "msm_silber") counts.msm_silber++;
+        else if (cat === "msm_bronze") counts.msm_bronze++;
+        else if (cat === "msm_alt") counts.msm_alt++;
+      }
     }
   }
 
   // Apply category filter (nur wenn Feature aktiv)
-  const categoryRows = showProductFilter && (filter === "msm" || filter === "mcc")
-    ? allRows.filter((d) => getCategory(d.products?.name) === filter)
+  const MSM_SUB_FILTERS = ["msm_gold", "msm_silber", "msm_bronze", "msm_alt"];
+  const categoryRows = showProductFilter
+    ? filter === "msm"
+      ? allRows.filter((d) => isMsmCategory(getCategory(d.products?.name)))
+      : filter === "mcc"
+      ? allRows.filter((d) => getCategory(d.products?.name) === "mcc")
+      : MSM_SUB_FILTERS.includes(filter)
+      ? allRows.filter((d) => getCategory(d.products?.name) === filter)
+      : allRows
     : allRows;
 
   // Apply search filter
@@ -121,7 +152,7 @@ export default async function DealsPage({
   const [{ data: oneTimePayments }, { data: installmentRows }] = dealIds.length > 0
     ? await Promise.all([
         supabase.from("one_time_payments").select("deal_id, paid").in("deal_id", dealIds),
-        supabase.from("installments").select("deal_id, paid").in("deal_id", dealIds),
+        supabase.from("installments").select("deal_id, paid, amount").in("deal_id", dealIds),
       ])
     : [{ data: [] }, { data: [] }];
 
@@ -129,10 +160,14 @@ export default async function DealsPage({
   const otpMap = new Map<string, boolean>();
   for (const o of oneTimePayments ?? []) otpMap.set(o.deal_id, o.paid);
 
-  const instMap = new Map<string, { total: number; paid: number }>();
+  const instMap = new Map<string, { total: number; paid: number; perRate: number }>();
   for (const i of installmentRows ?? []) {
-    const cur = instMap.get(i.deal_id) ?? { total: 0, paid: 0 };
-    instMap.set(i.deal_id, { total: cur.total + 1, paid: cur.paid + (i.paid ? 1 : 0) });
+    const cur = instMap.get(i.deal_id) ?? { total: 0, paid: 0, perRate: 0 };
+    instMap.set(i.deal_id, {
+      total: cur.total + 1,
+      paid: cur.paid + (i.paid ? 1 : 0),
+      perRate: cur.total === 0 ? (i.amount ?? 0) : cur.perRate, // erste Rate als Referenz
+    });
   }
 
   const bal = balance ?? [];
@@ -189,6 +224,7 @@ export default async function DealsPage({
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Zahlung</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bezahlt</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Abschluss</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
               {isAdmin && <th className="px-4 py-3" />}
             </tr>
           </thead>
@@ -203,27 +239,8 @@ export default async function DealsPage({
                     >
                       {deal.customer_name}
                     </Link>
-                    {deal.notes && (
-                      <span
-                        title={(deal.notes as string).length > 80
-                          ? (deal.notes as string).slice(0, 80) + "…"
-                          : (deal.notes as string)}
-                        className="text-amber-400/70 hover:text-amber-400 transition-colors cursor-default"
-                      >
-                        <NotebookPen className="h-3.5 w-3.5" />
-                      </span>
-                    )}
+                    <NotePopup dealId={deal.id} notes={deal.notes as string | null} />
                   </div>
-                  {deal.inkasso_required && (
-                    <span className="ml-2 inline-flex items-center rounded-full bg-rose-500/15 px-1.5 py-0.5 text-xs font-medium text-rose-400">
-                      Inkasso
-                    </span>
-                  )}
-                  {!deal.inkasso_required && deal.mahnung_required && (
-                    <span className="ml-2 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-400">
-                      Mahnung
-                    </span>
-                  )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">
                   {deal.order_id ? `#${deal.order_id}` : "—"}
@@ -247,33 +264,48 @@ export default async function DealsPage({
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <Link href={`/deals/${deal.id}`} className="block">
+                  <Link href={`/deals/${deal.id}`} className="block space-y-0.5">
                     {deal.payment_type === "one_time" ? (
-                      <span className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        otpMap.get(deal.id)
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : "bg-rose-500/15 text-rose-400",
-                      )}>
-                        {otpMap.get(deal.id) ? "Ja" : "Nein"}
-                      </span>
+                      <>
+                        <span className={cn(
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                          otpMap.get(deal.id)
+                            ? "bg-emerald-500/15 text-emerald-400"
+                            : "bg-rose-500/15 text-rose-400",
+                        )}>
+                          {otpMap.get(deal.id) ? "Bezahlt" : "Offen"}
+                        </span>
+                        {(deal as Record<string, unknown>).down_payment ? (
+                          <p className="text-xs text-muted-foreground">
+                            AZ: {fmt((deal as Record<string, unknown>).down_payment as number)}
+                          </p>
+                        ) : null}
+                      </>
                     ) : (
                       (() => {
                         const inst = instMap.get(deal.id);
                         const paid = inst?.paid ?? 0;
                         const total = inst?.total ?? 0;
                         const done = paid === total && total > 0;
+                        const perRate = inst?.perRate ?? 0;
+                        const dp = (deal as Record<string, unknown>).down_payment as number | null;
                         return (
-                          <span className={cn(
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                            done
-                              ? "bg-emerald-500/15 text-emerald-400"
-                              : paid > 0
-                              ? "bg-amber-500/15 text-amber-400"
-                              : "bg-rose-500/15 text-rose-400",
-                          )}>
-                            {paid}/{total} Raten
-                          </span>
+                          <>
+                            <span className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                              done
+                                ? "bg-emerald-500/15 text-emerald-400"
+                                : paid > 0
+                                ? "bg-amber-500/15 text-amber-400"
+                                : "bg-rose-500/15 text-rose-400",
+                            )}>
+                              {paid}/{total} Raten
+                            </span>
+                            <div className="text-xs text-muted-foreground space-x-1.5">
+                              {perRate > 0 && <span>{fmt(perRate)}/Rate</span>}
+                              {dp ? <span>AZ: {fmt(dp)}</span> : null}
+                            </div>
+                          </>
                         );
                       })()
                     )}
@@ -281,6 +313,54 @@ export default async function DealsPage({
                 </td>
                 <td className="px-4 py-3 text-muted-foreground tabular-nums">
                   {format(new Date(deal.close_date), "dd.MM.yyyy", { locale: de })}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      title="Onboarding"
+                      className={cn(
+                        "rounded p-0.5 transition-colors",
+                        deal.onboarding_done
+                          ? "text-emerald-400"
+                          : "text-muted-foreground/25",
+                      )}
+                    >
+                      <HandshakeIcon className="h-3.5 w-3.5" />
+                    </span>
+                    <span
+                      title="Update-Call"
+                      className={cn(
+                        "rounded p-0.5 transition-colors",
+                        (deal as Record<string, unknown>).update_call_done
+                          ? "text-blue-400"
+                          : "text-muted-foreground/25",
+                      )}
+                    >
+                      <PhoneCall className="h-3.5 w-3.5" />
+                    </span>
+                    <span
+                      title="Mahnung"
+                      className={cn(
+                        "rounded p-0.5 transition-colors",
+                        deal.mahnung_required
+                          ? "text-amber-400"
+                          : "text-muted-foreground/25",
+                      )}
+                    >
+                      <TriangleAlert className="h-3.5 w-3.5" />
+                    </span>
+                    <span
+                      title="Inkasso"
+                      className={cn(
+                        "rounded p-0.5 transition-colors",
+                        deal.inkasso_required
+                          ? "text-rose-400"
+                          : "text-muted-foreground/25",
+                      )}
+                    >
+                      <Gavel className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
                 </td>
                 {isAdmin && (
                   <td className="px-3 py-3">
@@ -295,7 +375,7 @@ export default async function DealsPage({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={isAdmin ? 11 : 10} className="px-4 py-10 text-center text-muted-foreground">
                   {filter !== "alle"
                     ? `Keine ${filter.toUpperCase()}-Deals vorhanden.`
                     : <>Noch keine Deals vorhanden.{" "}

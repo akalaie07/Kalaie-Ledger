@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { getCurrentSession } from "@/lib/auth/get-current-org";
 
 async function requireSuperAdmin() {
@@ -10,10 +10,10 @@ async function requireSuperAdmin() {
   return session;
 }
 
-// Alle Organisationen mit User-Anzahl laden
+// Alle Organisationen mit User-Anzahl laden (Service-Role bypassed RLS)
 export async function getAllOrganizations() {
   await requireSuperAdmin();
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   const { data, error } = await supabase
     .from("organizations")
@@ -31,7 +31,7 @@ export async function toggleOrgFeature(
   enabled: boolean,
 ): Promise<{ error?: string }> {
   await requireSuperAdmin();
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // Aktuelle Settings laden
   const { data: org, error: fetchErr } = await supabase

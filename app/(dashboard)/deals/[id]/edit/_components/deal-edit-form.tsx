@@ -94,6 +94,13 @@ export function DealEditForm({
   const [paymentType, setPaymentType] = useState<"one_time" | "installments">(initial.payment_type);
   const [hasAnzahlung, setHasAnzahlung] = useState(initial.down_payment != null);
   const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
+  const [totalPrice, setTotalPrice] = useState(initial.total_price);
+  const [downPayment, setDownPayment] = useState(initial.down_payment ?? 0);
+  const [numberOfRates, setNumberOfRates] = useState(0);
+
+  function fmtPreview(v: number) {
+    return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
+  }
 
   const fe = state?.fieldErrors ?? {};
 
@@ -170,7 +177,8 @@ export function DealEditForm({
               min="0"
               step="0.01"
               required
-              defaultValue={initial.total_price}
+              value={totalPrice}
+              onChange={(e) => setTotalPrice(parseFloat(e.target.value) || 0)}
               aria-invalid={!!fe.total_price}
             />
             <FieldError msg={fe.total_price?.[0]} />
@@ -227,7 +235,8 @@ export function DealEditForm({
                 type="number"
                 min="0"
                 step="0.01"
-                defaultValue={initial.down_payment ?? ""}
+                value={downPayment || ""}
+                onChange={(e) => setDownPayment(parseFloat(e.target.value) || 0)}
                 aria-invalid={!!fe.down_payment}
               />
               <FieldError msg={fe.down_payment?.[0]} />
@@ -252,32 +261,52 @@ export function DealEditForm({
 
         {/* Raten-Felder */}
         {paymentType === "installments" && (
-          <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/20 p-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="number_of_rates">Anzahl Raten</Label>
-              <Input
-                id="number_of_rates"
-                name="number_of_rates"
-                type="number"
-                min="2"
-                aria-invalid={!!fe.number_of_rates}
-                placeholder="z.B. 3"
-              />
-              <FieldError msg={fe.number_of_rates?.[0]} />
+          <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="number_of_rates">Anzahl Raten</Label>
+                <Input
+                  id="number_of_rates"
+                  name="number_of_rates"
+                  type="number"
+                  min="2"
+                  value={numberOfRates || ""}
+                  onChange={(e) => setNumberOfRates(parseInt(e.target.value) || 0)}
+                  aria-invalid={!!fe.number_of_rates}
+                  placeholder="z.B. 3"
+                />
+                <FieldError msg={fe.number_of_rates?.[0]} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="first_due_date">Erstes Fälligkeitsdatum</Label>
+                <Input
+                  id="first_due_date"
+                  name="first_due_date"
+                  type="date"
+                  aria-invalid={!!fe.first_due_date}
+                />
+                <FieldError msg={fe.first_due_date?.[0]} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="first_due_date">Erstes Fälligkeitsdatum</Label>
-              <Input
-                id="first_due_date"
-                name="first_due_date"
-                type="date"
-                aria-invalid={!!fe.first_due_date}
-              />
-              <FieldError msg={fe.first_due_date?.[0]} />
-            </div>
-            <p className="col-span-2 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Nur ausfüllen, um bestehende Raten neu zu generieren.
             </p>
+            {totalPrice > 0 && numberOfRates >= 2 && (
+              (() => {
+                const dp = hasAnzahlung ? downPayment : 0;
+                const base = totalPrice - dp;
+                const perRate = base > 0 ? base / numberOfRates : 0;
+                return (
+                  <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
+                    <p className="font-medium text-blue-300 mb-1">Ratenvorschau (Neuberechnung)</p>
+                    <p className="text-blue-200/80">
+                      {fmtPreview(base)} ÷ {numberOfRates} Raten ={" "}
+                      <span className="font-semibold text-blue-100 text-base">{fmtPreview(perRate)} pro Rate</span>
+                    </p>
+                  </div>
+                );
+              })()
+            )}
           </div>
         )}
       </section>
