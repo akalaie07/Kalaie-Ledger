@@ -78,8 +78,13 @@ export async function signIn(
   }
 
   const { email, password, next } = result.data;
+  const captchaToken = formData.get("h-captcha-response") as string | null;
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+    options: { captchaToken: captchaToken ?? undefined },
+  });
 
   if (error) {
     if (
@@ -115,12 +120,16 @@ export async function signUp(
   }
 
   const { full_name, email, password, organization_name } = result.data;
+  const captchaToken = formData.get("h-captcha-response") as string | null;
   const supabase = await createClient();
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name, organization_name } },
+    options: {
+      data: { full_name, organization_name },
+      captchaToken: captchaToken ?? undefined,
+    },
   });
 
   if (error) {

@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 import { signUp, type AuthFormState } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,8 @@ export function SignupForm() {
     signUp,
     null,
   );
+  const [captchaToken, setCaptchaToken] = useState("");
+  const captchaRef = useRef<HCaptcha>(null);
 
   if (state?.message) {
     return (
@@ -31,7 +34,8 @@ export function SignupForm() {
   }
 
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-4" onSubmit={() => captchaRef.current?.resetCaptcha()}>
+      <input type="hidden" name="h-captcha-response" value={captchaToken} />
       {state?.error && (
         <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {state.error}
@@ -112,7 +116,15 @@ export function SignupForm() {
         </p>
       </div>
 
-      <Button type="submit" className="w-full" size="lg" disabled={pending}>
+      <HCaptcha
+        ref={captchaRef}
+        sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY!}
+        onVerify={setCaptchaToken}
+        onExpire={() => setCaptchaToken("")}
+        theme="dark"
+      />
+
+      <Button type="submit" className="w-full" size="lg" disabled={pending || !captchaToken}>
         {pending ? "Registrieren…" : "Organisation registrieren"}
       </Button>
 

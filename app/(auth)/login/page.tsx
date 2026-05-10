@@ -12,9 +12,10 @@ export default async function LoginPage({
   const { next, error } = await searchParams;
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-1 text-center">
-        <h2 className="text-xl font-semibold">Anmelden</h2>
+    <div className="space-y-5">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-foreground">Willkommen zurück</h2>
+        <p className="text-sm text-muted-foreground">Melde dich mit deinem Konto an</p>
       </div>
 
       {error === "auth_callback_failed" && (
