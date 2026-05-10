@@ -55,6 +55,10 @@ const DealSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "on"),
+  mahnung_required: z
+    .string()
+    .optional()
+    .transform((v) => v === "on"),
   onboarding_done: z
     .string()
     .optional()

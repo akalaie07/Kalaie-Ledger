@@ -355,6 +355,7 @@ export function DealForm({
             [
               { name: "onboarding_done", label: "Onboarding erledigt" },
               { name: "update_call_done", label: "Update-Call erledigt" },
+              { name: "mahnung_required", label: "Mahnung erforderlich" },
               { name: "inkasso_required", label: "Inkasso erforderlich" },
             ] as const
           ).map(({ name, label }) => (

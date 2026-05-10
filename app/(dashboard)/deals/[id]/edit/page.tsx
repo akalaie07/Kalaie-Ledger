@@ -92,6 +92,7 @@ export default async function DealEditPage({
           close_date: deal.close_date,
           onboarding_done: deal.onboarding_done,
           update_call_done: deal.update_call_done,
+          mahnung_required: deal.mahnung_required ?? false,
           inkasso_required: deal.inkasso_required,
           notes: deal.notes,
           closer_id: deal.closer_id,

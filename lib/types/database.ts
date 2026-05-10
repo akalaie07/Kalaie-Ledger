@@ -351,6 +351,7 @@ export type Database = {
           payment_type: Database["public"]["Enums"]["payment_type_enum"];
           close_date: string;
           inkasso_required: boolean;
+          mahnung_required: boolean;
           onboarding_done: boolean;
           update_call_done: boolean;
           notes: string | null;
@@ -373,6 +374,7 @@ export type Database = {
           payment_type?: Database["public"]["Enums"]["payment_type_enum"];
           close_date: string;
           inkasso_required?: boolean;
+          mahnung_required?: boolean;
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
@@ -395,6 +397,7 @@ export type Database = {
           payment_type?: Database["public"]["Enums"]["payment_type_enum"];
           close_date?: string;
           inkasso_required?: boolean;
+          mahnung_required?: boolean;
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
@@ -587,6 +590,7 @@ export type Database = {
           payment_type: Database["public"]["Enums"]["payment_type_enum"];
           close_date: string;
           inkasso_required: boolean;
+          mahnung_required: boolean;
           onboarding_done: boolean;
           update_call_done: boolean;
           notes: string | null;

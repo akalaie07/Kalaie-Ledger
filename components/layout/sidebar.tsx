@@ -7,12 +7,12 @@ import {
   Settings,
   LogOut,
   Building2,
-  AlertTriangle,
   BarChart2,
   Upload,
   Users,
   MessageSquare,
-  RefreshCw,
+  Bell,
+  AlertTriangle,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -39,54 +39,66 @@ interface SidebarProps {
   initialMembers: Member[];
 }
 
-const navItems = [
+type ChildItem = { href: string; label: string };
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  roles: Role[];
+  children?: ChildItem[];
+};
+
+const navItems: NavItem[] = [
   {
     href: "/deals",
     label: "Deals",
     icon: FileText,
-    roles: ["admin", "closer", "sales_partner"] as Role[],
+    roles: ["admin", "closer", "sales_partner"],
   },
   {
-    href: "/inkasso",
-    label: "Inkasso",
-    icon: AlertTriangle,
-    roles: ["admin"] as Role[],
+    href: "/forderungsmanagement",
+    label: "Forderungsmanagement",
+    icon: Bell,
+    roles: ["admin"],
+    children: [
+      { href: "/forderungsmanagement/mahnung", label: "Mahnung" },
+      { href: "/forderungsmanagement/inkasso", label: "Inkasso" },
+    ],
   },
   {
     href: "/berichte",
     label: "Berichte",
     icon: BarChart2,
-    roles: ["admin"] as Role[],
+    roles: ["admin"],
   },
   {
     href: "/import",
     label: "Importieren",
     icon: Upload,
-    roles: ["admin"] as Role[],
-  },
-  {
-    href: "/zahlungsabgleich",
-    label: "Zahlungsabgleich",
-    icon: RefreshCw,
-    roles: ["admin"] as Role[],
+    roles: ["admin"],
+    children: [
+      { href: "/import/deals", label: "Deals importieren" },
+      { href: "/import/zahlungsabgleich", label: "Zahlungsabgleich" },
+    ],
   },
   {
     href: "/chat",
     label: "Chat",
     icon: MessageSquare,
-    roles: ["admin", "closer", "sales_partner"] as Role[],
+    roles: ["admin", "closer", "sales_partner"],
   },
   {
     href: "/einstellungen/benutzer",
     label: "Benutzer",
     icon: Users,
-    roles: ["admin"] as Role[],
+    roles: ["admin"],
   },
   {
     href: "/einstellungen/stammdaten",
     label: "Stammdaten",
     icon: Settings,
-    roles: ["admin"] as Role[],
+    roles: ["admin"],
   },
 ];
 
@@ -117,6 +129,60 @@ function NavLink({
   );
 }
 
+function NavChildLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center rounded-md px-3 py-1.5 text-sm transition-colors",
+        active
+          ? "bg-accent text-accent-foreground font-medium"
+          : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+      )}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function NavGroup({
+  label,
+  icon: Icon,
+  children,
+  groupActive,
+  pathname,
+}: {
+  label: string;
+  icon: React.ElementType;
+  children: ChildItem[];
+  groupActive: boolean;
+  pathname: string;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <div
+        className={cn(
+          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+          groupActive ? "text-accent-foreground" : "text-muted-foreground",
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        {label}
+      </div>
+      <div className="ml-7 space-y-0.5 border-l border-border pl-3">
+        {children.map((child) => (
+          <NavChildLink
+            key={child.href}
+            href={child.href}
+            label={child.label}
+            active={pathname === child.href || pathname.startsWith(child.href + "/")}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Sidebar({ orgName, fullName, email, role, currentUserId, organizationId, initialMembers }: SidebarProps) {
   const pathname = usePathname();
 
@@ -130,17 +196,26 @@ export function Sidebar({ orgName, fullName, email, role, currentUserId, organiz
       </div>
 
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {visible.map((item) => (
-          <NavLink
-            key={item.href}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            active={
-              pathname === item.href || pathname.startsWith(item.href + "/")
-            }
-          />
-        ))}
+        {visible.map((item) =>
+          item.children ? (
+            <NavGroup
+              key={item.href}
+              label={item.label}
+              icon={item.icon}
+              children={item.children}
+              groupActive={pathname.startsWith(item.href)}
+              pathname={pathname}
+            />
+          ) : (
+            <NavLink
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              active={pathname === item.href || pathname.startsWith(item.href + "/")}
+            />
+          ),
+        )}
       </nav>
 
       {/* Team-Mitglieder mit Online-Status */}

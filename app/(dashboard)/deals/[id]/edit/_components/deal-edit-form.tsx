@@ -27,6 +27,7 @@ interface DealEditFormProps {
     close_date: string;
     onboarding_done: boolean;
     update_call_done: boolean;
+    mahnung_required: boolean;
     inkasso_required: boolean;
     notes: string | null;
     closer_id: string | null;
@@ -355,6 +356,7 @@ export function DealEditForm({
             [
               { name: "onboarding_done", label: "Onboarding erledigt", checked: initial.onboarding_done },
               { name: "update_call_done", label: "Update-Call erledigt", checked: initial.update_call_done },
+              { name: "mahnung_required", label: "Mahnung erforderlich", checked: initial.mahnung_required },
               { name: "inkasso_required", label: "Inkasso erforderlich", checked: initial.inkasso_required },
             ] as const
           ).map(({ name, label, checked }) => (

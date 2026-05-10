@@ -98,7 +98,7 @@ export function LoginForm({ next }: { next?: string }) {
 
       <HCaptcha
         ref={captchaRef}
-        sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY!}
+        sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY ?? "9a52edde-fb70-4c8c-8a32-c2742e421cd0"}
         onVerify={setCaptchaToken}
         onExpire={() => setCaptchaToken("")}
         theme="dark"
