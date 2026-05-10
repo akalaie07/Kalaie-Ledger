@@ -13,7 +13,7 @@ interface Option {
   name: string;
 }
 
-interface ProductOption {
+export interface ProductOption {
   id: string;
   name: string;
   product_type: "standard" | "subscription_monthly" | "subscription_yearly";

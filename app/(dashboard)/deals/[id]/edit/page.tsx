@@ -6,6 +6,7 @@ import { ChevronLeft } from "lucide-react";
 import { requireRole } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { DealEditForm } from "./_components/deal-edit-form";
+import { type ProductOption } from "../../new/_components/deal-form";
 import { DeleteDealButton } from "./_components/delete-deal-button";
 
 export const metadata: Metadata = { title: "Deal bearbeiten — Buchhaltung" };
@@ -78,7 +79,7 @@ export default async function DealEditPage({
       <DealEditForm
         dealId={id}
         platforms={platforms ?? []}
-        products={(products ?? []) as unknown as { id: string; name: string; product_type: string }[]}
+        products={(products ?? []) as unknown as ProductOption[]}
         closers={closers ?? []}
         salesPartners={salesPartners ?? []}
         initial={{

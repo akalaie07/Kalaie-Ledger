@@ -4,7 +4,7 @@ import { ChevronLeft } from "lucide-react";
 
 import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
-import { DealForm } from "./_components/deal-form";
+import { DealForm, type ProductOption } from "./_components/deal-form";
 
 export const metadata: Metadata = { title: "Neuer Deal — Buchhaltung" };
 
@@ -55,7 +55,7 @@ export default async function NewDealPage() {
 
       <DealForm
         platforms={(platforms.data ?? []) as { id: string; name: string }[]}
-        products={(products.data ?? []) as unknown as { id: string; name: string; product_type: string }[]}
+        products={(products.data ?? []) as unknown as ProductOption[]}
         closers={(closers.data ?? []) as { id: string; name: string }[]}
         salesPartners={
           (salesPartners.data ?? []) as { id: string; name: string }[]
