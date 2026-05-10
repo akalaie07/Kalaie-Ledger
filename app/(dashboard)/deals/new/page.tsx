@@ -55,7 +55,7 @@ export default async function NewDealPage() {
 
       <DealForm
         platforms={(platforms.data ?? []) as { id: string; name: string }[]}
-        products={(products.data ?? []) as { id: string; name: string; product_type: string }[]}
+        products={(products.data ?? []) as unknown as { id: string; name: string; product_type: string }[]}
         closers={(closers.data ?? []) as { id: string; name: string }[]}
         salesPartners={
           (salesPartners.data ?? []) as { id: string; name: string }[]
