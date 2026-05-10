@@ -211,6 +211,7 @@ export type Database = {
           active: boolean;
           created_at: string;
           updated_at: string;
+          product_type: "standard" | "subscription_monthly" | "subscription_yearly";
         };
         Insert: {
           id?: string;
@@ -220,6 +221,7 @@ export type Database = {
           active?: boolean;
           created_at?: string;
           updated_at?: string;
+          product_type?: "standard" | "subscription_monthly" | "subscription_yearly";
         };
         Update: {
           id?: string;
@@ -229,6 +231,7 @@ export type Database = {
           active?: boolean;
           created_at?: string;
           updated_at?: string;
+          product_type?: "standard" | "subscription_monthly" | "subscription_yearly";
         };
         Relationships: [
           {
