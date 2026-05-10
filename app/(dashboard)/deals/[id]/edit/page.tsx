@@ -78,7 +78,7 @@ export default async function DealEditPage({
       <DealEditForm
         dealId={id}
         platforms={platforms ?? []}
-        products={products ?? []}
+        products={(products ?? []) as { id: string; name: string; product_type: string }[]}
         closers={closers ?? []}
         salesPartners={salesPartners ?? []}
         initial={{
