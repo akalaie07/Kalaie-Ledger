@@ -38,9 +38,9 @@ export function InviteForm({
         <p className="text-sm font-medium text-foreground">{state.message}</p>
         <p className="text-xs text-muted-foreground">
           Nach der Bestätigung kannst du dich{" "}
-          <Link href="/login" className="text-foreground underline-offset-4 hover:underline">
+          <a href="/login" className="text-foreground underline-offset-4 hover:underline">
             anmelden
-          </Link>
+          </a>
           .
         </p>
       </div>

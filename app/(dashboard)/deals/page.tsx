@@ -69,6 +69,25 @@ export default async function DealsPage() {
       .eq("organization_id", session.organizationId),
   ]);
 
+  const dealIds = (deals ?? []).map((d) => d.id);
+
+  const [{ data: oneTimePayments }, { data: installmentRows }] = dealIds.length > 0
+    ? await Promise.all([
+        supabase.from("one_time_payments").select("deal_id, paid").in("deal_id", dealIds),
+        supabase.from("installments").select("deal_id, paid").in("deal_id", dealIds),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  // Build per-deal payment lookup
+  const otpMap = new Map<string, boolean>();
+  for (const o of oneTimePayments ?? []) otpMap.set(o.deal_id, o.paid);
+
+  const instMap = new Map<string, { total: number; paid: number }>();
+  for (const i of installmentRows ?? []) {
+    const cur = instMap.get(i.deal_id) ?? { total: 0, paid: 0 };
+    instMap.set(i.deal_id, { total: cur.total + 1, paid: cur.paid + (i.paid ? 1 : 0) });
+  }
+
   const rows = deals ?? [];
   const bal = balance ?? [];
   const isAdmin = session.role === "admin";
@@ -116,6 +135,7 @@ export default async function DealsPage() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Closer</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Preis</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Zahlung</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bezahlt</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Abschluss</th>
               {isAdmin && <th className="px-4 py-3" />}
             </tr>
@@ -157,6 +177,39 @@ export default async function DealsPage() {
                     {PAYMENT_LABEL[deal.payment_type]}
                   </span>
                 </td>
+                <td className="px-4 py-3">
+                  <Link href={`/deals/${deal.id}`} className="block">
+                    {deal.payment_type === "one_time" ? (
+                      <span className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                        otpMap.get(deal.id)
+                          ? "bg-emerald-500/15 text-emerald-400"
+                          : "bg-rose-500/15 text-rose-400",
+                      )}>
+                        {otpMap.get(deal.id) ? "Ja" : "Nein"}
+                      </span>
+                    ) : (
+                      (() => {
+                        const inst = instMap.get(deal.id);
+                        const paid = inst?.paid ?? 0;
+                        const total = inst?.total ?? 0;
+                        const done = paid === total && total > 0;
+                        return (
+                          <span className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                            done
+                              ? "bg-emerald-500/15 text-emerald-400"
+                              : paid > 0
+                              ? "bg-amber-500/15 text-amber-400"
+                              : "bg-rose-500/15 text-rose-400",
+                          )}>
+                            {paid}/{total} Raten
+                          </span>
+                        );
+                      })()
+                    )}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 text-muted-foreground tabular-nums">
                   {format(new Date(deal.close_date), "dd.MM.yyyy", { locale: de })}
                 </td>
@@ -169,7 +222,7 @@ export default async function DealsPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
                   Noch keine Deals vorhanden.{" "}
                   <Link href="/deals/new" className="text-foreground underline-offset-4 hover:underline">
                     Ersten Deal anlegen
