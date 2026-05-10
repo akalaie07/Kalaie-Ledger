@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentSession } from "@/lib/auth/get-current-org";
+import { parseDate } from "@/lib/utils/parse";
 
 // =============================================================================
 // Typen
@@ -54,20 +55,8 @@ export type AbgleichResult = {
 };
 
 // =============================================================================
-// Parser-Hilfsfunktionen
+// Parser-Hilfsfunktionen (parseDate kommt aus @/lib/utils/parse)
 // =============================================================================
-
-export function parseDate(val: string): string | null {
-  if (!val) return null;
-  const clean = val.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
-  const ddmm = clean.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-  if (ddmm) {
-    const [, d, m, y] = ddmm;
-    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-  }
-  return null;
-}
 
 function parsePrice(val: string): number | null {
   const clean = val.replace(/\s/g, "").replace(",", ".");
