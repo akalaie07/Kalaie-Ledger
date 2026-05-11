@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/get-current-org";
 import { ImportWizard } from "../_components/import-wizard";
-import { ImportNav } from "../_components/import-nav";
 
-export const metadata: Metadata = { title: "Deals importieren — Buchhaltung" };
+export const metadata: Metadata = { title: "Importieren — Buchhaltung" };
 
 export default async function ImportDealsPage() {
   await requireRole("admin");
@@ -13,10 +12,9 @@ export default async function ImportDealsPage() {
       <div>
         <h1 className="text-xl font-semibold">Importieren</h1>
         <p className="text-sm text-muted-foreground">
-          Deals und Zahlungen in die Datenbank importieren
+          Excel / CSV hochladen — Deals anlegen, aktualisieren oder Zahlungen abgleichen
         </p>
       </div>
-      <ImportNav active="deals" />
       <ImportWizard />
     </div>
   );
