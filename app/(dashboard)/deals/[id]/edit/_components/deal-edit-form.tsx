@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 
 import { updateDeal, type DealFormState } from "@/lib/actions/deals";
+import { type ProductOption } from "@/app/(dashboard)/deals/new/_components/deal-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,7 @@ interface Option { id: string; name: string }
 interface DealEditFormProps {
   dealId: string;
   platforms: Option[];
-  products: Option[];
+  products: ProductOption[];
   closers: Option[];
   salesPartners: Option[];
   initial: {
@@ -91,12 +92,36 @@ export function DealEditForm({
     updateDealWithId,
     null,
   );
+  const initialProduct = products.find((p) => p.id === initial.product_id);
+  const [selectedProductId, setSelectedProductId] = useState<string>(initial.product_id ?? "");
+  const [selectedProductType, setSelectedProductType] = useState<ProductOption["product_type"]>(
+    initialProduct?.product_type ?? "standard",
+  );
   const [paymentType, setPaymentType] = useState<"one_time" | "installments">(initial.payment_type);
   const [hasAnzahlung, setHasAnzahlung] = useState(initial.down_payment != null);
   const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
   const [totalPrice, setTotalPrice] = useState(initial.total_price);
   const [downPayment, setDownPayment] = useState(initial.down_payment ?? 0);
   const [numberOfRates, setNumberOfRates] = useState(0);
+
+  const isSubscription = selectedProductType === "subscription_monthly" || selectedProductType === "subscription_yearly";
+
+  function handleProductChange(productId: string) {
+    setSelectedProductId(productId);
+    const product = products.find((p) => p.id === productId);
+    const type = product?.product_type ?? "standard";
+    setSelectedProductType(type);
+    if (type === "subscription_monthly" || type === "subscription_yearly") {
+      setPaymentType("installments");
+    }
+  }
+
+  const ratenLabel =
+    selectedProductType === "subscription_monthly"
+      ? "Laufzeit (Monate)"
+      : selectedProductType === "subscription_yearly"
+      ? "Laufzeit (Jahre)"
+      : "Anzahl Raten";
 
   function fmtPreview(v: number) {
     return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
@@ -136,13 +161,27 @@ export function DealEditForm({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormSelect
-            name="product_id"
-            label="Produkt"
-            options={products}
-            defaultValue={initial.product_id}
-            error={fe.product_id?.[0]}
-          />
+          {/* Produkt — controlled, damit Zahlungsart sich automatisch anpasst */}
+          <div className="space-y-1.5">
+            <Label htmlFor="product_id">Produkt</Label>
+            <select
+              id="product_id"
+              name="product_id"
+              value={selectedProductId}
+              onChange={(e) => handleProductChange(e.target.value)}
+              className={cn(
+                "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                fe.product_id && "border-destructive",
+              )}
+            >
+              <option value="">— keine —</option>
+              {products.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+            <FieldError msg={fe.product_id?.[0]} />
+          </div>
           <FormSelect
             name="platform_id"
             label="Plattform"
@@ -199,16 +238,25 @@ export function DealEditForm({
 
           <div className="space-y-1.5">
             <Label htmlFor="payment_type">Zahlungsart <span className="text-destructive">*</span></Label>
-            <select
-              id="payment_type"
-              name="payment_type"
-              value={paymentType}
-              onChange={(e) => setPaymentType(e.target.value as "one_time" | "installments")}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="one_time">Einmalzahlung</option>
-              <option value="installments">Ratenzahlung</option>
-            </select>
+            {isSubscription ? (
+              <div className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm text-violet-300">
+                Abo — Ratenzahlung wird automatisch verwendet
+              </div>
+            ) : (
+              <select
+                id="payment_type"
+                name="payment_type"
+                value={paymentType}
+                onChange={(e) => setPaymentType(e.target.value as "one_time" | "installments")}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="one_time">Einmalzahlung</option>
+                <option value="installments">Ratenzahlung</option>
+              </select>
+            )}
+            {isSubscription && (
+              <input type="hidden" name="payment_type" value="installments" />
+            )}
           </div>
         </div>
 
@@ -264,7 +312,7 @@ export function DealEditForm({
           <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="number_of_rates">Anzahl Raten</Label>
+                <Label htmlFor="number_of_rates">{ratenLabel}</Label>
                 <Input
                   id="number_of_rates"
                   name="number_of_rates"

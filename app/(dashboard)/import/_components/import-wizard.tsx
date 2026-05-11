@@ -78,15 +78,27 @@ type ParsedFile =
   | { format: "column" | "standard"; rows: ImportRow[] }
   | { format: "copecart" | "digistore" | "ablefy"; rows: AbgleichRow[] };
 
+type FileEntry = {
+  name: string;
+  parsed: ParsedFile;
+};
+
 // =============================================================================
 // Platform-Export Parser (Copecart / Digistore / Ablefy)
 // =============================================================================
 
-function detectPlatformFormat(headers: string[]): "copecart" | "digistore" | "ablefy" | null {
+/**
+ * Erkennt das Platform-Format anhand der Header-Spalten und des Trennzeichens.
+ *
+ * Copecart:   Komma-getrennt, hat "Kundenname"-Spalte
+ * Ablefy:     Semikolon-getrennt, hat "TRX-ID"-Spalte
+ * Digistore:  Semikolon-getrennt, hat "Zahlungsstatus"-Spalte
+ */
+function detectPlatformFormat(headers: string[], delimiter: string): "copecart" | "digistore" | "ablefy" | null {
   const h = headers.map((x) => x.toLowerCase().trim());
-  if (h.some((x) => x === "transaktionsstatus")) return "copecart";
-  if (h.some((x) => x.startsWith("zahlungsnr"))) return "digistore";
-  if (h.some((x) => x === "zahlungsplan")) return "ablefy";
+  if (delimiter === "," && h.some((x) => x === "kundenname")) return "copecart";
+  if (h.some((x) => x === "trx-id")) return "ablefy";
+  if (h.some((x) => x === "zahlungsstatus")) return "digistore";
   return null;
 }
 
@@ -94,18 +106,29 @@ function parseCopecart(text: string): AbgleichRow[] {
   const lines = text.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
   const headers = parseLine(lines[0], ",");
-  const idxId = headers.findIndex((h) => h.toLowerCase() === "bestell-id");
-  const idxStatus = headers.findIndex((h) => h.toLowerCase() === "transaktionsstatus");
+  const lc = (s: string) => s.toLowerCase().trim();
+  const idxId = headers.findIndex((h) => lc(h) === "bestell-id");
+  const idxStatus = headers.findIndex((h) => lc(h) === "status");
+  const idxKunde = headers.findIndex((h) => lc(h) === "kundenname");
+  const idxPrice = headers.findIndex((h) => lc(h) === "nettopreis");
+  const idxProduct = headers.findIndex((h) => lc(h) === "produktname");
+  const idxRate = headers.findIndex((h) => lc(h) === "anzahl der rate");
   if (idxId < 0 || idxStatus < 0) return [];
   return lines.slice(1).flatMap((line) => {
     const cols = parseLine(line, ",");
     const orderId = cols[idxId];
     if (!orderId) return [];
-    const status = (cols[idxStatus] ?? "").toLowerCase();
+    const status = lc(cols[idxStatus] ?? "");
+    const seq = idxRate >= 0 ? parseInt(cols[idxRate] ?? "", 10) : NaN;
+    const rawPrice = idxPrice >= 0 ? parseFloat((cols[idxPrice] ?? "").replace(",", ".")) : NaN;
     return [{
       order_id: orderId,
       platform: "copecart" as const,
-      status: status.includes("bezahlt") ? "paid" : status.includes("erstattet") ? "refunded" : "failed",
+      status: status === "bezahlt" ? "paid" : status.includes("erstattet") ? "refunded" : "failed",
+      installment_sequence: !isNaN(seq) && seq > 0 ? seq : undefined,
+      customer_name: idxKunde >= 0 ? (cols[idxKunde]?.trim() || undefined) : undefined,
+      amount: !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : undefined,
+      product_name: idxProduct >= 0 ? (cols[idxProduct]?.trim() || undefined) : undefined,
     }];
   });
 }
@@ -114,18 +137,33 @@ function parseDigistore(text: string): AbgleichRow[] {
   const lines = text.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
   const headers = parseLine(lines[0], ";");
-  const idxId = headers.findIndex((h) => h.toLowerCase() === "bestell-id");
-  const idxNr = headers.findIndex((h) => h.toLowerCase().startsWith("zahlungsnr"));
-  const idxType = headers.findIndex((h) => h.toLowerCase() === "transaktionstyp");
+  const lc = (s: string) => s.toLowerCase().trim();
+  const idxId = headers.findIndex((h) => lc(h) === "bestell-id");
+  const idxZStatus = headers.findIndex((h) => lc(h) === "zahlungsstatus");
+  const idxVorname = headers.findIndex((h) => lc(h) === "vorname");
+  const idxNachname = headers.findIndex((h) => lc(h) === "nachname");
+  const idxProduct = headers.findIndex((h) => lc(h) === "produktname");
+  const idxPrice = headers.findIndex((h) => lc(h) === "erste zahlung");
   if (idxId < 0) return [];
   return lines.slice(1).flatMap((line) => {
     const cols = parseLine(line, ";");
     const orderId = cols[idxId];
     if (!orderId) return [];
-    const txType = (cols[idxType] ?? "").toLowerCase();
-    if (txType && !txType.includes("zahlung")) return [];
-    const nr = idxNr >= 0 ? parseInt(cols[idxNr] ?? "1", 10) : undefined;
-    return [{ order_id: orderId, platform: "digistore" as const, status: "paid" as const, installment_sequence: nr && !isNaN(nr) ? nr : undefined }];
+    const zStatus = lc(cols[idxZStatus] ?? "");
+    const isPaid = zStatus.includes("vollständig") || zStatus.includes("aktiv");
+    const isRefunded = zStatus.includes("abgebrochen") || zStatus.includes("rückgabe");
+    const vorname = idxVorname >= 0 ? (cols[idxVorname]?.trim() ?? "") : "";
+    const nachname = idxNachname >= 0 ? (cols[idxNachname]?.trim() ?? "") : "";
+    const customer_name = [vorname, nachname].filter(Boolean).join(" ") || undefined;
+    const rawPrice = idxPrice >= 0 ? parseFloat((cols[idxPrice] ?? "").replace(".", "").replace(",", ".")) : NaN;
+    return [{
+      order_id: orderId,
+      platform: "digistore" as const,
+      status: isPaid ? "paid" : isRefunded ? "refunded" : "failed",
+      customer_name,
+      product_name: idxProduct >= 0 ? (cols[idxProduct]?.trim() || undefined) : undefined,
+      amount: !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : undefined,
+    }];
   });
 }
 
@@ -133,10 +171,17 @@ function parseAblefy(text: string): AbgleichRow[] {
   const lines = text.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
   const headers = parseLine(lines[0], ";");
+  // Ablefy nutzt Umlaute als "ae", "ue", "oe" in Headern (z.B. KAeUFER)
   const norm = (s: string) => s.toLowerCase().trim();
-  const idxId = headers.findIndex((h) => norm(h).replace(/[- ]/g, "") === "bestellid");
-  const idxStatus = headers.findIndex((h) => norm(h) === "status");
-  const idxFaellig = headers.findIndex((h) => { const l = norm(h); return l.includes("faelligkeiten") || l.includes("fälligkeiten"); });
+  const lch = headers.map(norm);
+  // BESTELL-ID steht weit hinten, direkt per find
+  const idxId = lch.findIndex((h) => h === "bestell-id");
+  const idxStatus = lch.findIndex((h) => h === "status");
+  const idxVorname = lch.findIndex((h) => h.includes("kaeufer") && h.includes("vorname"));
+  const idxNachname = lch.findIndex((h) => h.includes("kaeufer") && h.includes("nachname"));
+  const idxProduct = lch.findIndex((h) => h === "produktname");
+  const idxBezahlt = lch.findIndex((h) => h === "bezahlt");
+  const idxFaelligkeit = lch.findIndex((h) => h.includes("faelligkeiten") || h.includes("fälligkeiten"));
   if (idxId < 0) return [];
   const seqMap = new Map<string, number>();
   return lines.slice(1).flatMap((line) => {
@@ -145,10 +190,21 @@ function parseAblefy(text: string): AbgleichRow[] {
     if (!orderId) return [];
     const status = norm(cols[idxStatus] ?? "");
     const isPaid = status.includes("erfolgreich");
-    const isFailed = status.includes("abgelaufen") || status.includes("failed");
     const seq = (seqMap.get(orderId) ?? 0) + 1;
     seqMap.set(orderId, seq);
-    return [{ order_id: orderId, platform: "ablefy" as const, status: isFailed ? "failed" : isPaid ? "paid" : "failed", installment_sequence: idxFaellig >= 0 ? seq : undefined }];
+    const vorname = idxVorname >= 0 ? (cols[idxVorname]?.trim() ?? "") : "";
+    const nachname = idxNachname >= 0 ? (cols[idxNachname]?.trim() ?? "") : "";
+    const customer_name = [vorname, nachname].filter(Boolean).join(" ") || undefined;
+    const rawPrice = idxBezahlt >= 0 ? parseFloat((cols[idxBezahlt] ?? "").replace(".", "").replace(",", ".")) : NaN;
+    return [{
+      order_id: orderId,
+      platform: "ablefy" as const,
+      status: isPaid ? "paid" : "failed",
+      installment_sequence: idxFaelligkeit >= 0 ? seq : undefined,
+      customer_name,
+      product_name: idxProduct >= 0 ? (cols[idxProduct]?.trim() || undefined) : undefined,
+      amount: !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : undefined,
+    }];
   });
 }
 
@@ -317,7 +373,7 @@ function parseCsvText(text: string): ParsedFile | string {
   const headers = parseLine(firstLine, delimiter);
 
   // Platform-Export erkennen
-  const platform = detectPlatformFormat(headers);
+  const platform = detectPlatformFormat(headers, delimiter);
   if (platform === "copecart") {
     const rows = parseCopecart(text);
     if (rows.length === 0) return "Keine Transaktionen in der Copecart-Datei gefunden.";
@@ -379,105 +435,131 @@ const FORMAT_COLOR: Record<FormatType, string> = {
 
 export function ImportWizard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
-  const [fileName, setFileName] = useState("");
-  const [parseError, setParseError] = useState("");
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [abgleichResult, setAbgleichResult] = useState<AbgleichResult | null>(null);
+  // Multi-Datei Support
+  const [fileEntries, setFileEntries] = useState<FileEntry[]>([]);
+  const [parseErrors, setParseErrors] = useState<{ name: string; msg: string }[]>([]);
+  const [importResults, setImportResults] = useState<{ name: string; result: ImportResult | AbgleichResult; type: "import" | "abgleich" }[]>([]);
   const [pending, startTransition] = useTransition();
   const [defaultDate, setDefaultDate] = useState(new Date().toISOString().slice(0, 10));
 
-  const isOwnFormat = parsedFile?.format === "column" || parsedFile?.format === "standard";
-  const isPlatformFormat = parsedFile?.format === "copecart" || parsedFile?.format === "digistore" || parsedFile?.format === "ablefy";
+  const hasFiles = fileEntries.length > 0;
+  const hasDone = importResults.length > 0;
 
   function applyDefaultDate(rows: ImportRow[], date: string): ImportRow[] {
     return rows.map((r) => ({ ...r, close_date: r.close_date || date }));
   }
 
-  function handleFile(file: File) {
-    resetState();
-    setFileName(file.name);
-    const ext = file.name.split(".").pop()?.toLowerCase();
-
-    if (ext === "xlsx" || ext === "xls") {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = parseXlsx(e.target!.result as ArrayBuffer);
-        if (typeof result === "string") { setParseError(result); return; }
-        if (result.format === "column") {
-          setParsedFile({ format: result.format, rows: applyDefaultDate(result.rows as ImportRow[], defaultDate) });
-        } else {
-          setParsedFile(result);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } else if (ext === "csv") {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = parseCsvText(e.target!.result as string);
-        if (typeof result === "string") { setParseError(result); return; }
-        if (result.format === "column") {
-          setParsedFile({ format: result.format, rows: applyDefaultDate(result.rows as ImportRow[], defaultDate) });
-        } else {
-          setParsedFile(result);
-        }
-      };
-      reader.readAsText(file, "utf-8");
-    } else {
-      setParseError("Nur CSV oder Excel-Dateien (.xlsx) werden unterstützt.");
-    }
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }
-
-  function handleImport() {
-    if (!parsedFile) return;
-    startTransition(async () => {
-      if (isOwnFormat) {
-        const rows = parsedFile.rows as ImportRow[];
-        const res = await importDeals(rows);
-        setImportResult(res);
-        if (res.imported + res.updated > 0) setParsedFile(null);
-      } else if (isPlatformFormat) {
-        const rows = parsedFile.rows as AbgleichRow[];
-        const res = await processPaymentExport(rows);
-        setAbgleichResult(res);
-        if (res.updated > 0) setParsedFile(null);
+  function processFile(file: File): Promise<{ entry: FileEntry | null; error: { name: string; msg: string } | null }> {
+    return new Promise((resolve) => {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (ext === "xlsx" || ext === "xls") {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const result = parseXlsx(e.target!.result as ArrayBuffer);
+          if (typeof result === "string") {
+            resolve({ entry: null, error: { name: file.name, msg: result } });
+          } else {
+            const parsed = result.format === "column"
+              ? { format: result.format as "column", rows: applyDefaultDate(result.rows as ImportRow[], defaultDate) }
+              : result;
+            resolve({ entry: { name: file.name, parsed }, error: null });
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (ext === "csv") {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const result = parseCsvText(e.target!.result as string);
+          if (typeof result === "string") {
+            resolve({ entry: null, error: { name: file.name, msg: result } });
+          } else {
+            const parsed = result.format === "column"
+              ? { format: result.format as "column", rows: applyDefaultDate(result.rows as ImportRow[], defaultDate) }
+              : result;
+            resolve({ entry: { name: file.name, parsed }, error: null });
+          }
+        };
+        reader.readAsText(file, "utf-8");
+      } else {
+        resolve({ entry: null, error: { name: file.name, msg: "Nur CSV oder Excel-Dateien (.xlsx) werden unterstützt." } });
       }
     });
   }
 
-  function resetState() {
-    setParsedFile(null);
-    setParseError("");
-    setImportResult(null);
-    setAbgleichResult(null);
+  async function handleFiles(files: FileList | File[]) {
+    const arr = Array.from(files);
+    const newEntries: FileEntry[] = [];
+    const newErrors: { name: string; msg: string }[] = [];
+    for (const file of arr) {
+      const { entry, error } = await processFile(file);
+      if (entry) newEntries.push(entry);
+      if (error) newErrors.push(error);
+    }
+    setFileEntries((prev) => {
+      // Duplikate (gleicher Name) entfernen
+      const existingNames = new Set(prev.map((e) => e.name));
+      return [...prev, ...newEntries.filter((e) => !existingNames.has(e.name))];
+    });
+    setParseErrors((prev) => [...prev, ...newErrors]);
   }
 
-  function fullReset() {
-    resetState();
-    setFileName("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+  }
+
+  function removeEntry(name: string) {
+    setFileEntries((prev) => prev.filter((e) => e.name !== name));
+  }
+
+  function handleImportAll() {
+    if (fileEntries.length === 0) return;
+    startTransition(async () => {
+      const results: typeof importResults = [];
+      for (const entry of fileEntries) {
+        const fmt = entry.parsed.format;
+        const isOwn = fmt === "column" || fmt === "standard";
+        if (isOwn) {
+          const rows = entry.parsed.rows as ImportRow[];
+          const res = await importDeals(rows);
+          results.push({ name: entry.name, result: res, type: "import" });
+        } else {
+          const rows = entry.parsed.rows as AbgleichRow[];
+          const res = await processPaymentExport(rows);
+          results.push({ name: entry.name, result: res, type: "abgleich" });
+        }
+      }
+      setImportResults(results);
+      setFileEntries([]);
+    });
   }
 
   function handleDateChange(date: string) {
     setDefaultDate(date);
-    if (parsedFile?.format === "column") {
-      setParsedFile({
-        format: "column",
-        rows: applyDefaultDate(parsedFile.rows as ImportRow[], date),
-      });
-    }
+    setFileEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.parsed.format === "column") {
+          return {
+            ...entry,
+            parsed: {
+              format: "column" as const,
+              rows: applyDefaultDate(entry.parsed.rows as ImportRow[], date),
+            },
+          };
+        }
+        return entry;
+      }),
+    );
   }
 
-  const ownRows = isOwnFormat ? (parsedFile!.rows as ImportRow[]) : [];
-  const platformRows = isPlatformFormat ? (parsedFile!.rows as AbgleichRow[]) : [];
-  const paidPlatformRows = platformRows.filter((r) => r.status === "paid");
-  const skippedPlatformRows = platformRows.filter((r) => r.status !== "paid");
+  function fullReset() {
+    setFileEntries([]);
+    setParseErrors([]);
+    setImportResults([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const fmt = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 
   return (
     <div className="space-y-6">
@@ -487,14 +569,14 @@ export function ImportWizard() {
         <div className="grid sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
           <div className="space-y-1">
             <p className="font-medium text-foreground">📊 Excel / CSV (eigene Tabelle)</p>
-            <p>Deine Buchhaltungs-Tabelle (Kalaie-Format) oder Standard-CSV. Bestehende Deals werden automatisch aktualisiert, neue angelegt.</p>
+            <p>Deine Buchhaltungs-Tabelle (Kalaie-Format) oder Standard-CSV. Bestehende Deals werden per Bestell-ID geupdated, neue angelegt.</p>
             <button onClick={downloadTemplate} className="text-xs text-foreground underline underline-offset-4 hover:no-underline mt-1">
               Vorlage herunterladen
             </button>
           </div>
           <div className="space-y-1">
             <p className="font-medium text-foreground">💳 Platform-Exports</p>
-            <p>CSV-Export von Copecart, Digistore oder Ablefy — Zahlungsstatus wird automatisch abgeglichen.</p>
+            <p>CSV-Export von Copecart, Digistore oder Ablefy — mehrere Dateien gleichzeitig möglich.</p>
             <div className="flex gap-1.5 mt-1 flex-wrap">
               {["Copecart", "Digistore", "Ablefy"].map((p) => (
                 <span key={p} className="rounded-full border border-border px-2 py-0.5 text-xs">{p}</span>
@@ -504,56 +586,61 @@ export function ImportWizard() {
         </div>
       </div>
 
-      {/* Drop zone */}
-      {!parsedFile && !importResult && !abgleichResult && (
+      {/* Drop zone — immer sichtbar wenn noch keine Ergebnisse */}
+      {!hasDone && (
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
           onClick={() => fileInputRef.current?.click()}
-          className="rounded-lg border-2 border-dashed border-border bg-muted/10 px-8 py-12 text-center space-y-4 transition-colors hover:border-border/80 cursor-pointer"
+          className={cn(
+            "rounded-lg border-2 border-dashed border-border bg-muted/10 px-8 py-10 text-center space-y-3 transition-colors hover:border-border/80 cursor-pointer",
+            hasFiles && "py-6",
+          )}
         >
           <div className="flex justify-center">
-            <div className="rounded-full bg-muted p-4">
-              <Upload className="h-8 w-8 text-muted-foreground" />
+            <div className="rounded-full bg-muted p-3">
+              <Upload className="h-6 w-6 text-muted-foreground" />
             </div>
           </div>
           <div>
-            <p className="font-medium">Excel (.xlsx) oder CSV hochladen</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Klicken oder Datei hier ablegen — Format wird automatisch erkannt
+            <p className="font-medium">
+              {hasFiles ? "Weitere Datei(en) hinzufügen" : "Excel (.xlsx) oder CSV hochladen"}
+            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Klicken oder Dateien hier ablegen — mehrere Dateien gleichzeitig möglich
             </p>
           </div>
           <input
             ref={fileInputRef}
             type="file"
             accept=".csv,.xlsx,.xls"
+            multiple
             className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+            onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); }}
           />
         </div>
       )}
 
-      {parseError && (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          {parseError}
+      {/* Parse-Fehler */}
+      {parseErrors.length > 0 && (
+        <div className="space-y-2">
+          {parseErrors.map((err, i) => (
+            <div key={i} className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span><span className="font-medium">{err.name}:</span> {err.msg}</span>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Format Badge + Date Picker */}
-      {parsedFile && (
-        <div className="flex flex-wrap items-center gap-3">
-          <span className={cn(
-            "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-            FORMAT_COLOR[parsedFile.format],
-          )}>
-            {FORMAT_LABEL[parsedFile.format]} erkannt
-          </span>
-
-          {parsedFile.format === "column" && (
+      {/* Datei-Liste mit Preview */}
+      {fileEntries.length > 0 && (
+        <div className="space-y-4">
+          {/* Abschlussdatum für Kalaie-Dateien */}
+          {fileEntries.some((e) => e.parsed.format === "column") && (
             <div className="flex items-center gap-2 text-sm">
               <Label htmlFor="default_date" className="text-muted-foreground whitespace-nowrap">
-                Abschlussdatum (Standard):
+                Abschlussdatum (Standard für Kalaie-Format):
               </Label>
               <Input
                 id="default_date"
@@ -564,195 +651,211 @@ export function ImportWizard() {
               />
             </div>
           )}
-        </div>
-      )}
 
-      {/* Preview — eigene Datei */}
-      {parsedFile && isOwnFormat && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{fileName}</span>
-              <span className="text-sm text-muted-foreground">
-                — {ownRows.length} {ownRows.length === 1 ? "Deal" : "Deals"} erkannt
-              </span>
-            </div>
-            <button onClick={fullReset} className="text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          {fileEntries.map((entry) => {
+            const isOwn = entry.parsed.format === "column" || entry.parsed.format === "standard";
+            const rows = entry.parsed.rows;
 
-          <div className="rounded-lg border border-border overflow-auto max-h-72">
-            <table className="w-full text-xs">
-              <thead className="border-b border-border bg-muted/40">
-                <tr>
-                  {["Kunde", "Bestell-ID", "Preis", "Zahlungsart", "Raten", "Bezahlt", "Abschluss", "Plattform"].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {ownRows.slice(0, 15).map((r, i) => (
-                  <tr key={i} className={cn(!r.customer_name && "opacity-50 bg-destructive/5")}>
-                    <td className="px-3 py-2 font-medium whitespace-nowrap">{r.customer_name || "—"}</td>
-                    <td className="px-3 py-2 tabular-nums text-muted-foreground whitespace-nowrap">{r.order_id || "—"}</td>
-                    <td className="px-3 py-2 tabular-nums whitespace-nowrap">
-                      {r.total_price ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(r.total_price)) : "—"}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">{r.payment_type || "—"}</td>
-                    <td className="px-3 py-2 text-center">{r.number_of_rates || (r.payment_type?.toLowerCase().includes("einmal") ? "1" : "—")}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{r.bezahlt_raten || "—"}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{r.close_date || "—"}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{r.platform_name || "—"}</td>
-                  </tr>
-                ))}
-                {ownRows.length > 15 && (
-                  <tr><td colSpan={8} className="px-3 py-2 text-center text-muted-foreground">+ {ownRows.length - 15} weitere…</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+            return (
+              <div key={entry.name} className="rounded-lg border border-border overflow-hidden">
+                {/* Datei-Header */}
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/20 border-b border-border">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm font-medium">{entry.name}</span>
+                    <span className={cn(
+                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                      FORMAT_COLOR[entry.parsed.format],
+                    )}>
+                      {FORMAT_LABEL[entry.parsed.format]}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {isOwn
+                        ? `${rows.length} Deals`
+                        : (() => {
+                            const pRows = rows as AbgleichRow[];
+                            const paid = pRows.filter((r) => r.status === "paid").length;
+                            const skip = pRows.length - paid;
+                            return `${pRows.length} Transaktionen · ${paid} bezahlt${skip > 0 ? ` · ${skip} übersprungen` : ""}`;
+                          })()
+                      }
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => removeEntry(entry.name)}
+                    className="text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
 
-          <div className="flex gap-3">
-            <Button onClick={handleImport} disabled={pending}>
-              {pending ? `Importiere ${ownRows.length} Deals…` : `${ownRows.length} Deals importieren / aktualisieren`}
-            </Button>
-            <Button variant="outline" onClick={fullReset}>Abbrechen</Button>
-          </div>
-        </div>
-      )}
-
-      {/* Preview — Platform Export */}
-      {parsedFile && isPlatformFormat && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{fileName}</span>
-              <span className="text-sm text-muted-foreground">
-                {platformRows.length} Transaktionen —{" "}
-                <span className="text-emerald-400 font-medium">{paidPlatformRows.length} bezahlt</span>
-                {skippedPlatformRows.length > 0 && <>, {skippedPlatformRows.length} übersprungen</>}
-              </span>
-            </div>
-            <button onClick={fullReset} className="text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="rounded-lg border border-border overflow-auto max-h-72">
-            <table className="w-full text-xs">
-              <thead className="border-b border-border bg-muted/40">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Bestell-ID</th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Rate</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {platformRows.slice(0, 20).map((r, i) => (
-                  <tr key={i} className={cn(r.status !== "paid" && "opacity-40")}>
-                    <td className="px-3 py-2 font-mono">{r.order_id}</td>
-                    <td className="px-3 py-2">
-                      <span className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        r.status === "paid" ? "bg-emerald-500/15 text-emerald-400"
-                          : r.status === "refunded" ? "bg-amber-500/15 text-amber-400"
-                          : "bg-muted text-muted-foreground",
-                      )}>
-                        {r.status === "paid" ? "Bezahlt" : r.status === "refunded" ? "Erstattet" : "Übersprungen"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{r.installment_sequence ? `Rate ${r.installment_sequence}` : "—"}</td>
-                  </tr>
-                ))}
-                {platformRows.length > 20 && (
-                  <tr><td colSpan={3} className="px-3 py-2 text-center text-muted-foreground">+ {platformRows.length - 20} weitere…</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex gap-3">
-            <Button onClick={handleImport} disabled={pending || paidPlatformRows.length === 0}>
-              {pending ? "Wird abgeglichen…" : `${paidPlatformRows.length} Zahlungen abgleichen`}
-            </Button>
-            <Button variant="outline" onClick={fullReset}>Abbrechen</Button>
-          </div>
-        </div>
-      )}
-
-      {/* Ergebnis — eigener Import */}
-      {importResult && (
-        <div className="space-y-3">
-          <div className={cn(
-            "rounded-lg border p-4 space-y-2",
-            importResult.errors.length === 0
-              ? "border-emerald-500/40 bg-emerald-500/10"
-              : "border-amber-500/40 bg-amber-500/10",
-          )}>
-            <div className="flex items-center gap-2">
-              {importResult.errors.length === 0
-                ? <CheckCircle className="h-4 w-4 text-emerald-400" />
-                : <AlertTriangle className="h-4 w-4 text-amber-400" />}
-              <span className="text-sm font-medium">
-                {importResult.imported > 0 && `${importResult.imported} neu angelegt`}
-                {importResult.imported > 0 && (importResult.updated > 0 || importResult.skipped > 0) && " · "}
-                {importResult.updated > 0 && (
-                  <span className="inline-flex items-center gap-1">
-                    <RefreshCw className="h-3 w-3" />
-                    {importResult.updated} aktualisiert
-                  </span>
-                )}
-                {importResult.skipped > 0 && ` · ${importResult.skipped} übersprungen`}
-              </span>
-            </div>
-            {importResult.errors.length > 0 && (
-              <ul className="space-y-1 text-xs text-amber-400">
-                {importResult.errors.slice(0, 10).map((e, i) => <li key={i}>• {e}</li>)}
-                {importResult.errors.length > 10 && <li>+ {importResult.errors.length - 10} weitere…</li>}
-              </ul>
-            )}
-          </div>
-          <Button variant="outline" onClick={fullReset}>Weiteren Import starten</Button>
-        </div>
-      )}
-
-      {/* Ergebnis — Platform Abgleich */}
-      {abgleichResult && (
-        <div className="space-y-3">
-          <div className={cn(
-            "rounded-lg border p-4 space-y-3",
-            abgleichResult.errors.length === 0 && abgleichResult.notFound.length === 0
-              ? "border-emerald-500/40 bg-emerald-500/10"
-              : "border-amber-500/40 bg-amber-500/10",
-          )}>
-            <div className="flex items-center gap-2">
-              {abgleichResult.errors.length === 0 && abgleichResult.notFound.length === 0
-                ? <CheckCircle className="h-4 w-4 text-emerald-400" />
-                : <AlertTriangle className="h-4 w-4 text-amber-400" />}
-              <span className="text-sm font-medium">
-                {abgleichResult.updated} Zahlungen abgeglichen
-                {abgleichResult.created > 0 && ` · ${abgleichResult.created} neu angelegt`}
-                {abgleichResult.skipped > 0 && ` · ${abgleichResult.skipped} übersprungen`}
-              </span>
-            </div>
-            {abgleichResult.created > 0 && (
-              <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2">
-                <PlusCircle className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-blue-400">
-                  {abgleichResult.created} Deal(s) wurden automatisch angelegt — Kundenname und Preis bitte manuell ergänzen.{" "}
-                  <Link href="/deals" className="underline underline-offset-2 hover:text-blue-300">Zu den Deals →</Link>
-                </p>
+                {/* Preview-Tabelle */}
+                <div className="overflow-auto max-h-56">
+                  {isOwn ? (
+                    <table className="w-full text-xs">
+                      <thead className="border-b border-border bg-muted/20 sticky top-0">
+                        <tr>
+                          {["Kunde", "Bestell-ID", "Preis", "Zahlungsart", "Raten", "Bezahlt", "Abschluss", "Plattform"].map((h) => (
+                            <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {(rows as ImportRow[]).slice(0, 20).map((r, i) => (
+                          <tr key={i} className={cn(!r.customer_name && "opacity-50 bg-destructive/5")}>
+                            <td className="px-3 py-1.5 font-medium whitespace-nowrap">{r.customer_name || "—"}</td>
+                            <td className="px-3 py-1.5 font-mono text-muted-foreground whitespace-nowrap">{r.order_id || "—"}</td>
+                            <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">
+                              {r.total_price ? fmt.format(Number(r.total_price)) : "—"}
+                            </td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">{r.payment_type || "—"}</td>
+                            <td className="px-3 py-1.5 text-center">{r.number_of_rates || (r.payment_type?.toLowerCase().includes("einmal") ? "1" : "—")}</td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">{r.bezahlt_raten || "—"}</td>
+                            <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">{r.close_date || "—"}</td>
+                            <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">{r.platform_name || "—"}</td>
+                          </tr>
+                        ))}
+                        {rows.length > 20 && (
+                          <tr><td colSpan={8} className="px-3 py-2 text-center text-muted-foreground">+ {rows.length - 20} weitere…</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead className="border-b border-border bg-muted/20 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Bestell-ID</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Kunde</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Produkt</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Betrag</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {(rows as AbgleichRow[]).slice(0, 20).map((r, i) => (
+                          <tr key={i} className={cn(r.status !== "paid" && "opacity-40")}>
+                            <td className="px-3 py-1.5 font-mono text-muted-foreground">{r.order_id}</td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">{r.customer_name || "—"}</td>
+                            <td className="px-3 py-1.5 max-w-[160px] truncate text-muted-foreground">{r.product_name || "—"}</td>
+                            <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">{r.amount != null ? fmt.format(r.amount) : "—"}</td>
+                            <td className="px-3 py-1.5">
+                              <span className={cn(
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                                r.status === "paid" ? "bg-emerald-500/15 text-emerald-400"
+                                  : r.status === "refunded" ? "bg-amber-500/15 text-amber-400"
+                                  : "bg-muted text-muted-foreground",
+                              )}>
+                                {r.status === "paid" ? "Bezahlt" : r.status === "refunded" ? "Erstattet" : "Übersprungen"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-muted-foreground">
+                              {r.installment_sequence ? `Rate ${r.installment_sequence}` : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                        {rows.length > 20 && (
+                          <tr><td colSpan={6} className="px-3 py-2 text-center text-muted-foreground">+ {rows.length - 20} weitere…</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
-            )}
-            {abgleichResult.errors.length > 0 && (
-              <ul className="space-y-1 text-xs text-rose-400">
-                {abgleichResult.errors.map((e, i) => <li key={i}>• {e}</li>)}
-              </ul>
-            )}
+            );
+          })}
+
+          {/* Import-Button für alle Dateien */}
+          <div className="flex gap-3 pt-1">
+            <Button onClick={handleImportAll} disabled={pending}>
+              {pending
+                ? "Wird verarbeitet…"
+                : fileEntries.length === 1
+                ? (() => {
+                    const e = fileEntries[0];
+                    const isOwn = e.parsed.format === "column" || e.parsed.format === "standard";
+                    return isOwn
+                      ? `${e.parsed.rows.length} Deals importieren`
+                      : `${(e.parsed.rows as AbgleichRow[]).filter((r) => r.status === "paid").length} Zahlungen abgleichen`;
+                  })()
+                : `${fileEntries.length} Dateien verarbeiten`}
+            </Button>
+            <Button variant="outline" onClick={fullReset}>Abbrechen</Button>
           </div>
+        </div>
+      )}
+
+      {/* Ergebnisse */}
+      {importResults.length > 0 && (
+        <div className="space-y-4">
+          {importResults.map((res, i) => {
+            const isImport = res.type === "import";
+            const ir = isImport ? (res.result as ImportResult) : null;
+            const ar = !isImport ? (res.result as AbgleichResult) : null;
+            const hasError = isImport
+              ? (ir!.errors.length > 0)
+              : (ar!.errors.length > 0 || ar!.notFound.length > 0);
+
+            return (
+              <div key={i} className={cn(
+                "rounded-lg border p-4 space-y-2",
+                hasError ? "border-amber-500/40 bg-amber-500/10" : "border-emerald-500/40 bg-emerald-500/10",
+              )}>
+                <div className="flex items-center gap-2">
+                  {hasError
+                    ? <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                    : <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />}
+                  <span className="text-sm font-medium text-muted-foreground truncate">{res.name}</span>
+                </div>
+
+                {isImport && ir && (
+                  <p className="text-sm font-medium">
+                    {ir.imported > 0 && `${ir.imported} neu angelegt`}
+                    {ir.imported > 0 && (ir.updated > 0 || ir.skipped > 0) && " · "}
+                    {ir.updated > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <RefreshCw className="h-3 w-3" />
+                        {ir.updated} aktualisiert
+                      </span>
+                    )}
+                    {ir.skipped > 0 && ` · ${ir.skipped} übersprungen`}
+                    {ir.imported === 0 && ir.updated === 0 && "Keine neuen Deals."}
+                  </p>
+                )}
+
+                {!isImport && ar && (
+                  <p className="text-sm font-medium">
+                    {ar.updated} Zahlungen abgeglichen
+                    {ar.created > 0 && ` · ${ar.created} neu angelegt`}
+                    {ar.skipped > 0 && ` · ${ar.skipped} übersprungen`}
+                  </p>
+                )}
+
+                {!isImport && ar && ar.created > 0 && (
+                  <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+                    <PlusCircle className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-blue-400">
+                      {ar.created} Deal(s) automatisch angelegt — Kundenname und Preis bitte ergänzen.{" "}
+                      <Link href="/deals" className="underline underline-offset-2 hover:text-blue-300">Zu den Deals →</Link>
+                    </p>
+                  </div>
+                )}
+
+                {isImport && ir && ir.errors.length > 0 && (
+                  <ul className="space-y-1 text-xs text-amber-400">
+                    {ir.errors.slice(0, 5).map((e, j) => <li key={j}>• {e}</li>)}
+                    {ir.errors.length > 5 && <li>+ {ir.errors.length - 5} weitere…</li>}
+                  </ul>
+                )}
+                {!isImport && ar && ar.errors.length > 0 && (
+                  <ul className="space-y-1 text-xs text-rose-400">
+                    {ar.errors.slice(0, 5).map((e, j) => <li key={j}>• {e}</li>)}
+                    {ar.errors.length > 5 && <li>+ {ar.errors.length - 5} weitere…</li>}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
           <Button variant="outline" onClick={fullReset}>Weiteren Import starten</Button>
         </div>
       )}

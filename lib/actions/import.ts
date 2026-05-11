@@ -44,6 +44,10 @@ export type AbgleichRow = {
   platform: "copecart" | "digistore" | "ablefy";
   status: "paid" | "refunded" | "failed";
   installment_sequence?: number;
+  // Optionale Felder für Vorschau-Tabelle
+  customer_name?: string;
+  product_name?: string;
+  amount?: number;
 };
 
 export type AbgleichResult = {
