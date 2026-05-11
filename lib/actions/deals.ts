@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentSession } from "@/lib/auth/get-current-org";
+import { getCurrentSession, requireRole } from "@/lib/auth/get-current-org";
 
 export type DealFormState = {
   error?: string;
@@ -303,6 +303,24 @@ export async function deleteDeal(id: string): Promise<void> {
 
   revalidatePath("/deals");
   redirect("/deals");
+}
+
+// ---------------------------------------------------------------------------
+// bulkDeleteDeals
+// ---------------------------------------------------------------------------
+
+export async function bulkDeleteDeals(ids: string[]): Promise<{ error?: string }> {
+  if (ids.length === 0) return {};
+  const session = await requireRole("admin");
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("deals")
+    .delete()
+    .in("id", ids)
+    .eq("organization_id", session.organizationId);
+  if (error) return { error: error.message };
+  revalidatePath("/deals");
+  return {};
 }
 
 // ---------------------------------------------------------------------------

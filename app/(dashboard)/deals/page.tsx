@@ -1,27 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus, TrendingUp, Clock, AlertTriangle, CheckCircle, HandshakeIcon, PhoneCall, TriangleAlert, Gavel } from "lucide-react";
-import { format } from "date-fns";
-import { de } from "date-fns/locale";
+import { Plus, TrendingUp, Clock, AlertTriangle, CheckCircle } from "lucide-react";
 
 import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { hasFeature } from "@/lib/features";
-import { DealRowActions } from "./_components/deal-row-actions";
 import { DealFilterTabs } from "./_components/deal-filter-tabs";
 import { DealSearch } from "./_components/deal-search";
-import { NotePopup } from "./_components/note-popup";
+import { DealsTable } from "./_components/deals-table";
+import type { DealRowData } from "./_components/deals-table";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
-
-function getPaymentLabel(paymentType: string, productType?: string | null): string {
-  if (paymentType === "one_time") return "Einmalzahlung";
-  if (productType === "subscription_monthly") return "Abo · monatlich";
-  if (productType === "subscription_yearly") return "Abo · jährlich";
-  return "Ratenzahlung";
-}
 
 function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
@@ -200,6 +191,34 @@ export default async function DealsPage({
   const openSum = bal.reduce((s, b) => s + (Number(b.open_sum) || 0), 0);
   const overdueSum = bal.reduce((s, b) => s + (Number(b.overdue_sum) || 0), 0);
 
+  const dealRows: DealRowData[] = rows.map((d) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const da = d as any;
+    const inst = instMap.get(d.id);
+    return {
+      id: d.id,
+      customer_name: d.customer_name,
+      order_id: d.order_id ?? null,
+      product_name: da.products?.name ?? null,
+      product_type: da.products?.product_type ?? null,
+      platform_name: da.platforms?.name ?? null,
+      closer_name: da.closers?.name ?? null,
+      total_price: d.total_price as number,
+      payment_type: d.payment_type as "one_time" | "installments",
+      close_date: d.close_date,
+      down_payment: (d.down_payment as number | null) ?? null,
+      notes: d.notes ?? null,
+      mahnung_required: d.mahnung_required ?? false,
+      inkasso_required: d.inkasso_required ?? false,
+      onboarding_done: d.onboarding_done ?? false,
+      update_call_done: (d.update_call_done as boolean) ?? false,
+      otp_paid: d.payment_type === "one_time" ? (otpMap.get(d.id) ?? false) : null,
+      inst_total: inst?.total ?? 0,
+      inst_paid: inst?.paid ?? 0,
+      inst_open_amount: inst?.openAmount ?? 0,
+    };
+  });
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -233,203 +252,7 @@ export default async function DealsPage({
       )}
 
       {/* Table */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b border-border bg-muted/40">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Kunde</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bestell-ID</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Produkt</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Plattform</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Closer</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Preis</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Zahlung</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bezahlt</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Abschluss</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              {isAdmin && <th className="px-4 py-3" />}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.map((deal) => (
-              <tr key={deal.id} className="group hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <Link
-                      href={`/deals/${deal.id}`}
-                      className="font-medium hover:underline underline-offset-4"
-                    >
-                      {deal.customer_name}
-                    </Link>
-                    <NotePopup dealId={deal.id} notes={deal.notes as string | null} />
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">
-                  {deal.order_id ? `#${deal.order_id}` : "—"}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{deal.products?.name ?? "—"}</td>
-                <td className="px-4 py-3 text-muted-foreground">{deal.platforms?.name ?? "—"}</td>
-                <td className="px-4 py-3 text-muted-foreground">{deal.closers?.name ?? "—"}</td>
-                <td className="px-4 py-3 text-right font-medium tabular-nums">
-                  {fmt(deal.total_price as number)}
-                </td>
-                <td className="px-4 py-3">
-                  {(() => {
-                    const pt = (deal as Record<string, unknown>).products as { product_type?: string } | null;
-                    const label = getPaymentLabel(deal.payment_type, pt?.product_type);
-                    const isAbo = label.startsWith("Abo");
-                    return (
-                      <span className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        deal.payment_type === "one_time"
-                          ? "bg-blue-500/15 text-blue-400"
-                          : isAbo
-                          ? "bg-violet-500/15 text-violet-400"
-                          : "bg-purple-500/15 text-purple-400",
-                      )}>
-                        {label}
-                      </span>
-                    );
-                  })()}
-                </td>
-                <td className="px-4 py-3">
-                  <Link href={`/deals/${deal.id}`} className="block space-y-0.5">
-                    {deal.payment_type === "one_time" ? (
-                      (() => {
-                        const isPaid = otpMap.get(deal.id) ?? false;
-                        const dp = (deal as Record<string, unknown>).down_payment as number | null;
-                        const openAmt = isPaid ? 0 : (deal.total_price as number) - (dp ?? 0);
-                        return (
-                          <>
-                            <span className={cn(
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                              isPaid ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400",
-                            )}>
-                              {isPaid ? "Bezahlt" : "Offen"}
-                            </span>
-                            {(dp || (!isPaid && openAmt > 0)) && (
-                              <p className="text-xs text-muted-foreground">
-                                {dp ? `AZ ${fmt(dp)}` : ""}
-                                {dp && !isPaid && openAmt > 0 ? " · " : ""}
-                                {!isPaid && openAmt > 0 ? <span className="text-rose-400/80">{fmt(openAmt)} offen</span> : null}
-                              </p>
-                            )}
-                          </>
-                        );
-                      })()
-                    ) : (
-                      (() => {
-                        const inst = instMap.get(deal.id);
-                        const paid = inst?.paid ?? 0;
-                        const total = inst?.total ?? 0;
-                        if (total === 0) return <span className="text-muted-foreground/40 text-xs">—</span>;
-                        const done = paid === total;
-                        const openAmount = inst?.openAmount ?? 0;
-                        const dp = (deal as Record<string, unknown>).down_payment as number | null;
-                        return (
-                          <>
-                            <span className={cn(
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                              done
-                                ? "bg-emerald-500/15 text-emerald-400"
-                                : paid > 0
-                                ? "bg-amber-500/15 text-amber-400"
-                                : "bg-rose-500/15 text-rose-400",
-                            )}>
-                              {paid}/{total} Raten
-                            </span>
-                            {(dp || (!done && openAmount > 0)) && (
-                              <p className="text-xs text-muted-foreground">
-                                {dp ? `AZ ${fmt(dp)}` : ""}
-                                {dp && !done && openAmount > 0 ? " · " : ""}
-                                {!done && openAmount > 0 ? <span className="text-rose-400/80">{fmt(openAmount)} offen</span> : null}
-                              </p>
-                            )}
-                          </>
-                        );
-                      })()
-                    )}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground tabular-nums">
-                  {format(new Date(deal.close_date), "dd.MM.yyyy", { locale: de })}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      title="Onboarding"
-                      className={cn(
-                        "rounded p-0.5 transition-colors",
-                        deal.onboarding_done
-                          ? "text-emerald-400"
-                          : "text-muted-foreground/25",
-                      )}
-                    >
-                      <HandshakeIcon className="h-3.5 w-3.5" />
-                    </span>
-                    <span
-                      title="Update-Call"
-                      className={cn(
-                        "rounded p-0.5 transition-colors",
-                        (deal as Record<string, unknown>).update_call_done
-                          ? "text-blue-400"
-                          : "text-muted-foreground/25",
-                      )}
-                    >
-                      <PhoneCall className="h-3.5 w-3.5" />
-                    </span>
-                    <span
-                      title="Mahnung"
-                      className={cn(
-                        "rounded p-0.5 transition-colors",
-                        deal.mahnung_required
-                          ? "text-amber-400"
-                          : "text-muted-foreground/25",
-                      )}
-                    >
-                      <TriangleAlert className="h-3.5 w-3.5" />
-                    </span>
-                    <span
-                      title="Inkasso"
-                      className={cn(
-                        "rounded p-0.5 transition-colors",
-                        deal.inkasso_required
-                          ? "text-rose-400"
-                          : "text-muted-foreground/25",
-                      )}
-                    >
-                      <Gavel className="h-3.5 w-3.5" />
-                    </span>
-                  </div>
-                </td>
-                {isAdmin && (
-                  <td className="px-3 py-3">
-                    <DealRowActions
-                      dealId={deal.id}
-                      mahnungRequired={deal.mahnung_required ?? false}
-                      inkassoRequired={deal.inkasso_required}
-                    />
-                  </td>
-                )}
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={isAdmin ? 11 : 10} className="px-4 py-10 text-center text-muted-foreground">
-                  {filter !== "alle"
-                    ? `Keine ${filter.toUpperCase()}-Deals vorhanden.`
-                    : <>Noch keine Deals vorhanden.{" "}
-                        <Link href="/deals/new" className="text-foreground underline-offset-4 hover:underline">
-                          Ersten Deal anlegen
-                        </Link>
-                      </>
-                  }
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DealsTable rows={dealRows} isAdmin={isAdmin} filter={filter} />
     </div>
   );
 }
