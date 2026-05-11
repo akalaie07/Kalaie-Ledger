@@ -17,7 +17,7 @@ function mapTyp(rawTyp: string): NormalizedEventType {
   const t = lc(rawTyp);
   if (t === "zahlungseingang" || (t.includes("zahlung") && t.includes("eingang")))
     return "payment_paid";
-  if (t === "rueckbuchung" || t === "rückbuchung") return "refund";
+  if (t === "rueckbuchung" || t === "rückbuchung") return "chargeback";
   if (t.includes("erstattet") || t.includes("storno") || t.includes("storniert"))
     return "refund";
   if (t.includes("fehlgeschlagen") || t.includes("abgelehnt")) return "payment_failed";

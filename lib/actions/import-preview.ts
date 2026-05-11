@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentSession } from "@/lib/auth/get-current-org";
+import { requireRole } from "@/lib/auth/get-current-org";
 import { classifyRows } from "@/lib/import/preview";
 import type { DealContext, InstallmentContext } from "@/lib/import/preview";
 import type { NormalizedImportRow, PreviewItem } from "@/lib/import/types";
@@ -14,8 +14,7 @@ import type { NormalizedImportRow, PreviewItem } from "@/lib/import/types";
 // =============================================================================
 
 export async function previewImport(normalized: NormalizedImportRow[]): Promise<PreviewItem[]> {
-  const session = await getCurrentSession();
-  if (!session) return [];
+  const session = await requireRole("admin");
   if (normalized.length === 0) return [];
 
   const supabase = await createClient();

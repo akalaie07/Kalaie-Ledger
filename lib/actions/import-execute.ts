@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentSession } from "@/lib/auth/get-current-org";
+import { requireRole } from "@/lib/auth/get-current-org";
 import type { PreviewItem, NormalizedImportRow } from "@/lib/import/types";
 
 // =============================================================================
@@ -52,18 +52,7 @@ function findProductId(
  *  2. Zahlungs-Markierung (bezahlt/neu anlegen) für alle Items
  */
 export async function executeImport(items: PreviewItem[]): Promise<ExecuteResult> {
-  const session = await getCurrentSession();
-  if (!session) {
-    return {
-      created: 0,
-      paid: 0,
-      installmentsCreated: 0,
-      skipped: 0,
-      reviewNeeded: 0,
-      errors: ["Nicht angemeldet."],
-      reviewItems: [],
-    };
-  }
+  const session = await requireRole("admin");
 
   const supabase = await createClient();
   const { organizationId, userId } = session;
@@ -129,14 +118,10 @@ export async function executeImport(items: PreviewItem[]): Promise<ExecuteResult
     const paymentType: "one_time" | "installments" =
       rep.planType === "one_time" ? "one_time" : "installments";
 
-    // Gesamtpreis schätzen: alle bekannten Beträge summieren
-    const knownAmounts = paidItemsForOrder
-      .map((i) => i.normalized.amount)
-      .filter((a) => a > 0);
-    const estimatedTotal =
-      paymentType === "one_time" || knownAmounts.length === 0
-        ? rep.amount
-        : knownAmounts.reduce((sum, a) => sum + a, 0);
+    // Gesamtpreis: bei Einmalzahlung ist rep.amount verlässlich.
+    // Bei Raten/Abos ist die Summe der importierten Raten kein sicherer
+    // Gesamtpreis (Teilexport möglich) → 0 schreiben, Notiz setzen.
+    const estimatedTotal = paymentType === "one_time" ? rep.amount : 0;
 
     // Legacy-XLSX: order_id aus "legacy-..." Prefix nicht in DB schreiben
     const dbOrderId = orderId.startsWith("legacy-") ? null : orderId;
@@ -157,7 +142,16 @@ export async function executeImport(items: PreviewItem[]): Promise<ExecuteResult
         payment_type: paymentType,
         close_date: rep.eventDate,
         notes:
-          rep.source === "legacy_xlsx" && rep.productRawName
+          paymentType === "installments"
+            ? [
+                "Gesamtpreis muss manuell geprüft werden.",
+                rep.source === "legacy_xlsx" && rep.productRawName
+                  ? rep.productRawName
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" | ")
+            : rep.source === "legacy_xlsx" && rep.productRawName
             ? rep.productRawName
             : null,
       })
@@ -321,8 +315,15 @@ export async function executeImport(items: PreviewItem[]): Promise<ExecuteResult
           if (error)
             errors.push(`${label} Rate ${n.installmentSequence}: ${error.message}`);
           else paid++;
+        } else if (n.source === "digistore") {
+          // Digistore Snapshot ohne eindeutige Sequenz → niemals automatisch alle Raten markieren.
+          // Das wäre nur sicher wenn alle Raten im Export enthalten sind, was nicht garantiert ist.
+          reviewNeeded++;
+          reviewItems.push(
+            `${label}: Digistore Snapshot ohne eindeutige Rate — manuelle Prüfung erforderlich.`,
+          );
         } else {
-          // Kein Sequenz (Digistore-Snapshot) → alle offenen Raten markieren
+          // Nicht-Digistore ohne Sequenz → alle offenen Raten markieren
           const { data: unpaid } = await supabase
             .from("installments")
             .select("id")

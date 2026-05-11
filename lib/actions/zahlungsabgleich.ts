@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentSession } from "@/lib/auth/get-current-org";
+import { requireRole } from "@/lib/auth/get-current-org";
 
 export type AbgleichRow = {
   order_id: string;
@@ -20,8 +20,7 @@ export type AbgleichResult = {
 };
 
 export async function processZahlungsabgleich(rows: AbgleichRow[]): Promise<AbgleichResult> {
-  const session = await getCurrentSession();
-  if (!session) return { updated: 0, skipped: 0, created: 0, notFound: [], errors: ["Nicht angemeldet."] };
+  const session = await requireRole("admin");
 
   const supabase = await createClient();
 

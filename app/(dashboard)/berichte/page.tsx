@@ -119,40 +119,47 @@ export default async function BerichtePage({
   const maxSoll = Math.max(...periodData.map((p) => p.soll), 1);
 
   // ─── Closer-Provisionen ───────────────────────────────────────────────────
-  const closerRevMap = new Map<string, { name: string; revenue: number; commission: number; rate: number }>();
+  type StaffEntry = { name: string; sollRevenue: number; istRevenue: number; sollCommission: number; istCommission: number; rate: number };
+  const closerRevMap = new Map<string, StaffEntry>();
   for (const d of deals) {
     if (!d.closer_id) continue;
     const c = closerById.get(d.closer_id);
     if (!c) continue;
-    const rev = Number(d.total_price) || 0;
+    const soll = Number(d.total_price) || 0;
+    const ist = Number(balanceMap.get(d.id)?.paid_sum ?? 0);
     const rate = Number(c.commission_rate) || 0;
-    const prev = closerRevMap.get(d.closer_id) ?? { name: c.name, revenue: 0, commission: 0, rate };
+    const prev = closerRevMap.get(d.closer_id) ?? { name: c.name, sollRevenue: 0, istRevenue: 0, sollCommission: 0, istCommission: 0, rate };
     closerRevMap.set(d.closer_id, {
       name: c.name,
-      revenue: prev.revenue + rev,
-      commission: prev.commission + rev * rate,
+      sollRevenue: prev.sollRevenue + soll,
+      istRevenue: prev.istRevenue + ist,
+      sollCommission: prev.sollCommission + soll * rate,
+      istCommission: prev.istCommission + ist * rate,
       rate,
     });
   }
-  const closers = Array.from(closerRevMap.values()).sort((a, b) => b.revenue - a.revenue);
+  const closers = Array.from(closerRevMap.values()).sort((a, b) => b.sollRevenue - a.sollRevenue);
 
   // ─── Partner-Provisionen ──────────────────────────────────────────────────
-  const partnerRevMap = new Map<string, { name: string; revenue: number; commission: number; rate: number }>();
+  const partnerRevMap = new Map<string, StaffEntry>();
   for (const d of deals) {
     if (!d.sales_partner_id) continue;
     const p = partnerById.get(d.sales_partner_id);
     if (!p) continue;
-    const rev = Number(d.total_price) || 0;
+    const soll = Number(d.total_price) || 0;
+    const ist = Number(balanceMap.get(d.id)?.paid_sum ?? 0);
     const rate = Number(p.commission_rate) || 0;
-    const prev = partnerRevMap.get(d.sales_partner_id) ?? { name: p.name, revenue: 0, commission: 0, rate };
+    const prev = partnerRevMap.get(d.sales_partner_id) ?? { name: p.name, sollRevenue: 0, istRevenue: 0, sollCommission: 0, istCommission: 0, rate };
     partnerRevMap.set(d.sales_partner_id, {
       name: p.name,
-      revenue: prev.revenue + rev,
-      commission: prev.commission + rev * rate,
+      sollRevenue: prev.sollRevenue + soll,
+      istRevenue: prev.istRevenue + ist,
+      sollCommission: prev.sollCommission + soll * rate,
+      istCommission: prev.istCommission + ist * rate,
       rate,
     });
   }
-  const partners = Array.from(partnerRevMap.values()).sort((a, b) => b.revenue - a.revenue);
+  const partners = Array.from(partnerRevMap.values()).sort((a, b) => b.sollRevenue - a.sollRevenue);
 
   const istPct = totalSoll > 0 ? Math.round((totalIst / totalSoll) * 100) : 0;
 
@@ -268,17 +275,21 @@ export default async function BerichtePage({
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Closer</th>
                   <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Soll-Umsatz</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision %</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Ist-Umsatz</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Prov. %</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Soll-Provision</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Ist-Provision</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {closers.map((c) => (
                   <tr key={c.name} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-medium">{c.name}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.revenue)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(c.sollRevenue)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.istRevenue)}</td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">{(c.rate * 100).toFixed(0)} %</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(c.commission)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(c.sollCommission)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(c.istCommission)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -297,17 +308,21 @@ export default async function BerichtePage({
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Partner</th>
                   <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Soll-Umsatz</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision %</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Provision</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Ist-Umsatz</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Prov. %</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Soll-Provision</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Ist-Provision</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {partners.map((p) => (
                   <tr key={p.name} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{fmt(p.revenue)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(p.sollRevenue)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{fmt(p.istRevenue)}</td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">{(p.rate * 100).toFixed(0)} %</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(p.commission)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(p.sollCommission)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(p.istCommission)}</td>
                   </tr>
                 ))}
               </tbody>
