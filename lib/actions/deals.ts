@@ -75,7 +75,7 @@ const DealSchema = z.object({
   number_of_rates: z.coerce
     .number()
     .int()
-    .min(2, "Mindestens 2 Raten.")
+    .min(1, "Mindestens 1 Rate/Periode.")
     .optional()
     .nullable(),
   first_due_date: optDate,

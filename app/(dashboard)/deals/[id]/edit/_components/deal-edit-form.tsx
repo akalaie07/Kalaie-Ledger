@@ -317,7 +317,7 @@ export function DealEditForm({
                   id="number_of_rates"
                   name="number_of_rates"
                   type="number"
-                  min="2"
+                  min={isSubscription ? "1" : "2"}
                   value={numberOfRates || ""}
                   onChange={(e) => setNumberOfRates(parseInt(e.target.value) || 0)}
                   aria-invalid={!!fe.number_of_rates}

@@ -110,9 +110,12 @@ function parseCopecart(text: string): AbgleichRow[] {
   const idxId = headers.findIndex((h) => lc(h) === "bestell-id");
   const idxStatus = headers.findIndex((h) => lc(h) === "status");
   const idxKunde = headers.findIndex((h) => lc(h) === "kundenname");
-  const idxPrice = headers.findIndex((h) => lc(h) === "nettopreis");
+  const idxPrice = headers.findIndex((h) => lc(h) === "nettopreis" || lc(h) === "betrag");
   const idxProduct = headers.findIndex((h) => lc(h) === "produktname");
-  const idxRate = headers.findIndex((h) => lc(h) === "anzahl der rate");
+  const idxRate = headers.findIndex((h) => lc(h) === "anzahl der rate" || lc(h) === "rate nr.");
+  const idxDate = headers.findIndex((h) => lc(h) === "datum" || lc(h) === "transaktionsdatum" || lc(h) === "bestelldatum");
+  const idxPlan = headers.findIndex((h) => lc(h) === "zahlungsplan" || lc(h) === "zahlungsart");
+  const idxTotalRates = headers.findIndex((h) => lc(h) === "gesamtrate" || lc(h) === "raten gesamt" || lc(h) === "anzahl raten");
   if (idxId < 0 || idxStatus < 0) return [];
   return lines.slice(1).flatMap((line) => {
     const cols = parseLine(line, ",");
@@ -121,6 +124,14 @@ function parseCopecart(text: string): AbgleichRow[] {
     const status = lc(cols[idxStatus] ?? "");
     const seq = idxRate >= 0 ? parseInt(cols[idxRate] ?? "", 10) : NaN;
     const rawPrice = idxPrice >= 0 ? parseFloat((cols[idxPrice] ?? "").replace(",", ".")) : NaN;
+    const rawDate = idxDate >= 0 ? cols[idxDate]?.trim() : undefined;
+    const parsedDate = rawDate ? (parseDate(rawDate) ?? undefined) : undefined;
+    const planRaw = idxPlan >= 0 ? lc(cols[idxPlan] ?? "") : "";
+    const isSubscription = planRaw.includes("abo") || planRaw.includes("subscription");
+    const isInstallment = planRaw.includes("rate") || planRaw.includes("teilzahl");
+    const payment_plan: "one_time" | "installments" | undefined =
+      isSubscription || isInstallment ? "installments" : planRaw.includes("einmal") ? "one_time" : undefined;
+    const totalRatesRaw = idxTotalRates >= 0 ? parseInt(cols[idxTotalRates] ?? "", 10) : NaN;
     return [{
       order_id: orderId,
       platform: "copecart" as const,
@@ -129,6 +140,9 @@ function parseCopecart(text: string): AbgleichRow[] {
       customer_name: idxKunde >= 0 ? (cols[idxKunde]?.trim() || undefined) : undefined,
       amount: !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : undefined,
       product_name: idxProduct >= 0 ? (cols[idxProduct]?.trim() || undefined) : undefined,
+      date: parsedDate,
+      payment_plan,
+      total_installments: !isNaN(totalRatesRaw) && totalRatesRaw > 0 ? totalRatesRaw : undefined,
     }];
   });
 }
@@ -143,19 +157,29 @@ function parseDigistore(text: string): AbgleichRow[] {
   const idxVorname = headers.findIndex((h) => lc(h) === "vorname");
   const idxNachname = headers.findIndex((h) => lc(h) === "nachname");
   const idxProduct = headers.findIndex((h) => lc(h) === "produktname");
-  const idxPrice = headers.findIndex((h) => lc(h) === "erste zahlung");
+  const idxPrice = headers.findIndex((h) => lc(h) === "erste zahlung" || lc(h) === "ratenbetrag" || lc(h) === "preis");
+  const idxDate = headers.findIndex((h) => lc(h) === "erste zahlung am" || lc(h) === "datum" || lc(h) === "bestelldatum");
+  const idxPlan = headers.findIndex((h) => lc(h) === "abrechnungstyp" || lc(h) === "zahlungstyp");
+  const idxTotalRates = headers.findIndex((h) => lc(h) === "anzahl zahlungen" || lc(h) === "raten" || lc(h) === "laufzeit");
   if (idxId < 0) return [];
   return lines.slice(1).flatMap((line) => {
     const cols = parseLine(line, ";");
     const orderId = cols[idxId];
     if (!orderId) return [];
     const zStatus = lc(cols[idxZStatus] ?? "");
-    const isPaid = zStatus.includes("vollständig") || zStatus.includes("aktiv");
-    const isRefunded = zStatus.includes("abgebrochen") || zStatus.includes("rückgabe");
+    const isPaid = zStatus.includes("vollständig") || zStatus.includes("aktiv") || zStatus.includes("abgeschlossen");
+    const isRefunded = zStatus.includes("abgebrochen") || zStatus.includes("rückgabe") || zStatus.includes("erstattet");
     const vorname = idxVorname >= 0 ? (cols[idxVorname]?.trim() ?? "") : "";
     const nachname = idxNachname >= 0 ? (cols[idxNachname]?.trim() ?? "") : "";
     const customer_name = [vorname, nachname].filter(Boolean).join(" ") || undefined;
     const rawPrice = idxPrice >= 0 ? parseFloat((cols[idxPrice] ?? "").replace(".", "").replace(",", ".")) : NaN;
+    const rawDate = idxDate >= 0 ? cols[idxDate]?.trim() : undefined;
+    const parsedDate = rawDate ? (parseDate(rawDate) ?? undefined) : undefined;
+    const planRaw = idxPlan >= 0 ? lc(cols[idxPlan] ?? "") : "";
+    const isInstallment = planRaw.includes("rate") || planRaw.includes("teilzahl") || planRaw.includes("abo");
+    const payment_plan: "one_time" | "installments" | undefined =
+      isInstallment ? "installments" : planRaw.includes("einmal") ? "one_time" : undefined;
+    const totalRatesRaw = idxTotalRates >= 0 ? parseInt(cols[idxTotalRates] ?? "", 10) : NaN;
     return [{
       order_id: orderId,
       platform: "digistore" as const,
@@ -163,6 +187,9 @@ function parseDigistore(text: string): AbgleichRow[] {
       customer_name,
       product_name: idxProduct >= 0 ? (cols[idxProduct]?.trim() || undefined) : undefined,
       amount: !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : undefined,
+      date: parsedDate,
+      payment_plan,
+      total_installments: !isNaN(totalRatesRaw) && totalRatesRaw > 0 ? totalRatesRaw : undefined,
     }];
   });
 }
@@ -182,6 +209,8 @@ function parseAblefy(text: string): AbgleichRow[] {
   const idxProduct = lch.findIndex((h) => h === "produktname");
   const idxBezahlt = lch.findIndex((h) => h === "bezahlt");
   const idxFaelligkeit = lch.findIndex((h) => h.includes("faelligkeiten") || h.includes("fälligkeiten"));
+  const idxDate = lch.findIndex((h) => h === "datum" || h === "erstellt am" || h === "transaktionsdatum" || h === "zahlungsdatum");
+  const idxPlan = lch.findIndex((h) => h === "zahlungsplan" || h === "plan" || h === "zahlungstyp");
   if (idxId < 0) return [];
   const seqMap = new Map<string, number>();
   return lines.slice(1).flatMap((line) => {
@@ -189,21 +218,40 @@ function parseAblefy(text: string): AbgleichRow[] {
     const orderId = cols[idxId];
     if (!orderId) return [];
     const status = norm(cols[idxStatus] ?? "");
-    const isPaid = status.includes("erfolgreich");
+    const isPaid = status.includes("erfolgreich") || status.includes("bezahlt") || status.includes("abgeschlossen");
+    const isRefunded = status.includes("erstattet") || status.includes("rückgabe") || status.includes("storniert");
     const seq = (seqMap.get(orderId) ?? 0) + 1;
     seqMap.set(orderId, seq);
     const vorname = idxVorname >= 0 ? (cols[idxVorname]?.trim() ?? "") : "";
     const nachname = idxNachname >= 0 ? (cols[idxNachname]?.trim() ?? "") : "";
     const customer_name = [vorname, nachname].filter(Boolean).join(" ") || undefined;
     const rawPrice = idxBezahlt >= 0 ? parseFloat((cols[idxBezahlt] ?? "").replace(".", "").replace(",", ".")) : NaN;
+    const rawDate = idxDate >= 0 ? cols[idxDate]?.trim() : undefined;
+    const parsedDate = rawDate ? (parseDate(rawDate) ?? undefined) : undefined;
+    // Zahlungsplan parsen: "12 Raten" → installments:12, "Einmal" / "Einzahlung" → one_time
+    const planRaw = idxPlan >= 0 ? (cols[idxPlan]?.trim() ?? "") : "";
+    const planNorm = norm(planRaw);
+    let payment_plan: "one_time" | "installments" | undefined;
+    let total_installments: number | undefined;
+    if (planNorm.includes("rate") || planNorm.includes("abo") || planNorm.includes("subscription")) {
+      payment_plan = "installments";
+      // "12 Raten" → 12
+      const match = planRaw.match(/(\d+)/);
+      if (match) total_installments = parseInt(match[1], 10);
+    } else if (planNorm.includes("einmal") || planNorm.includes("einzahlung") || planNorm.includes("one")) {
+      payment_plan = "one_time";
+    }
     return [{
       order_id: orderId,
       platform: "ablefy" as const,
-      status: isPaid ? "paid" : "failed",
+      status: isPaid ? "paid" : isRefunded ? "refunded" : "failed",
       installment_sequence: idxFaelligkeit >= 0 ? seq : undefined,
       customer_name,
       product_name: idxProduct >= 0 ? (cols[idxProduct]?.trim() || undefined) : undefined,
       amount: !isNaN(rawPrice) && rawPrice > 0 ? rawPrice : undefined,
+      date: parsedDate,
+      payment_plan,
+      total_installments,
     }];
   });
 }
@@ -675,8 +723,12 @@ export function ImportWizard() {
                         : (() => {
                             const pRows = rows as AbgleichRow[];
                             const paid = pRows.filter((r) => r.status === "paid").length;
-                            const skip = pRows.length - paid;
-                            return `${pRows.length} Transaktionen · ${paid} bezahlt${skip > 0 ? ` · ${skip} übersprungen` : ""}`;
+                            const refunded = pRows.filter((r) => r.status === "refunded").length;
+                            const failed = pRows.filter((r) => r.status === "failed").length;
+                            const parts = [`${pRows.length} Transaktionen`, `${paid} bezahlt`];
+                            if (refunded > 0) parts.push(`${refunded} erstattet`);
+                            if (failed > 0) parts.push(`${failed} fehlgeschlagen`);
+                            return parts.join(" · ");
                           })()
                       }
                     </span>
@@ -825,9 +877,21 @@ export function ImportWizard() {
 
                 {!isImport && ar && (
                   <p className="text-sm font-medium">
-                    {ar.updated} Zahlungen abgeglichen
-                    {ar.created > 0 && ` · ${ar.created} neu angelegt`}
-                    {ar.skipped > 0 && ` · ${ar.skipped} übersprungen`}
+                    {(() => {
+                      const parts: string[] = [];
+                      if (ar.updated > 0) parts.push(`${ar.updated} bezahlt`);
+                      if (ar.enriched > 0) parts.push(`${ar.enriched} angereichert`);
+                      if (ar.created > 0) parts.push(`${ar.created} neu angelegt`);
+                      if (ar.refunded > 0) parts.push(`${ar.refunded} erstattet`);
+                      if (ar.failed > 0) parts.push(`${ar.failed} fehlgeschlagen`);
+                      return parts.length > 0 ? parts.join(" · ") : "Keine Änderungen.";
+                    })()}
+                  </p>
+                )}
+
+                {!isImport && ar && (ar.refunded > 0 || ar.failed > 0) && (
+                  <p className="text-xs text-muted-foreground">
+                    Erstattete und fehlgeschlagene Transaktionen werden nicht in die Buchhaltung übernommen.
                   </p>
                 )}
 
@@ -835,7 +899,7 @@ export function ImportWizard() {
                   <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2">
                     <PlusCircle className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
                     <p className="text-xs text-blue-400">
-                      {ar.created} Deal(s) automatisch angelegt — Kundenname und Preis bitte ergänzen.{" "}
+                      {ar.created} Deal(s) automatisch aus dem Platform-Export angelegt — bitte kurz prüfen und ggf. Produkt ergänzen.{" "}
                       <Link href="/deals" className="underline underline-offset-2 hover:text-blue-300">Zu den Deals →</Link>
                     </p>
                   </div>

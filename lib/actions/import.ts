@@ -44,16 +44,22 @@ export type AbgleichRow = {
   platform: "copecart" | "digistore" | "ablefy";
   status: "paid" | "refunded" | "failed";
   installment_sequence?: number;
-  // Optionale Felder für Vorschau-Tabelle
+  // Anreicherungsfelder (Vorschau + Smart-Import)
   customer_name?: string;
   product_name?: string;
-  amount?: number;
+  amount?: number;           // Betrag dieser Transaktion (eine Rate oder Einmalzahlung)
+  date?: string;             // Transaktionsdatum → close_date bei Auto-Deals
+  total_installments?: number; // Gesamtanzahl Raten (aus Zahlungsplan z.B. "12 Raten")
+  payment_plan?: "one_time" | "installments"; // Erkannter Zahlungsplan
 };
 
 export type AbgleichResult = {
   updated: number;
-  skipped: number;
+  enriched: number;   // bestehende "Unbekannt"-Deals angereichert
   created: number;
+  skipped: number;
+  refunded: number;   // erstattete Transaktionen
+  failed: number;     // fehlgeschlagene Transaktionen
   notFound: string[];
   errors: string[];
 };
@@ -317,98 +323,182 @@ async function applyPaymentStatus(
 }
 
 // =============================================================================
-// processPaymentExport — Platform-Export (Copecart / Digistore / Ablefy)
-// Übernommen und integriert aus zahlungsabgleich.ts
+// processPaymentExport — Smart Platform-Import (Copecart / Digistore / Ablefy)
 // =============================================================================
+
+/** Fuzzy-Produktname-Matching: findet das beste Produkt anhand Teil-Übereinstimmung */
+function findProductId(
+  products: { id: string; name: string }[] | null,
+  rawName: string | undefined,
+): string | null {
+  if (!rawName || !products?.length) return null;
+  const needle = rawName.toLowerCase().replace(/[^a-z0-9äöüß]/g, "");
+  const exact = products.find((p) => p.name.toLowerCase() === rawName.toLowerCase());
+  if (exact) return exact.id;
+  const partial = products.find((p) => {
+    const hay = p.name.toLowerCase().replace(/[^a-z0-9äöüß]/g, "");
+    return needle.includes(hay) || hay.includes(needle);
+  });
+  return partial?.id ?? null;
+}
 
 export async function processPaymentExport(rows: AbgleichRow[]): Promise<AbgleichResult> {
   const session = await getCurrentSession();
-  if (!session) return { updated: 0, skipped: 0, created: 0, notFound: [], errors: ["Nicht angemeldet."] };
+  if (!session) return {
+    updated: 0, enriched: 0, created: 0, skipped: 0, refunded: 0, failed: 0, notFound: [], errors: ["Nicht angemeldet."],
+  };
 
   const supabase = await createClient();
 
+  let updated = 0;
+  let enriched = 0;
+  let created = 0;
+  const notFound: string[] = [];
+  const errors: string[] = [];
+
+  // ─── Transaktionen aufschlüsseln ──────────────────────────────────────────
   const paidRows = rows.filter((r) => r.status === "paid");
-  if (paidRows.length === 0) return { updated: 0, skipped: rows.length, created: 0, notFound: [], errors: [] };
+  const refunded = rows.filter((r) => r.status === "refunded").length;
+  const failed = rows.filter((r) => r.status === "failed").length;
+
+  if (paidRows.length === 0) {
+    return { updated: 0, enriched: 0, created: 0, skipped: rows.length, refunded, failed, notFound: [], errors: [] };
+  }
 
   const orderIds = [...new Set(paidRows.map((r) => r.order_id))];
 
-  const { data: deals } = await supabase
-    .from("deals")
-    .select("id, order_id, payment_type")
-    .eq("organization_id", session.organizationId)
-    .in("order_id", orderIds);
+  // ─── Lookup-Daten laden ───────────────────────────────────────────────────
+  const [{ data: existingDeals }, { data: platforms }, { data: products }] = await Promise.all([
+    supabase
+      .from("deals")
+      .select("id, order_id, payment_type, customer_name, total_price, product_id")
+      .eq("organization_id", session.organizationId)
+      .in("order_id", orderIds),
+    supabase.from("platforms").select("id, name").eq("organization_id", session.organizationId),
+    supabase.from("products").select("id, name").eq("organization_id", session.organizationId),
+  ]);
 
-  const dealMap = new Map<string, { id: string; payment_type: string }>();
-  for (const d of deals ?? []) {
-    if (d.order_id) dealMap.set(d.order_id, { id: d.id, payment_type: d.payment_type });
+  type DealRecord = { id: string; payment_type: string; customer_name: string; total_price: number; product_id: string | null };
+  const dealMap = new Map<string, DealRecord>();
+  for (const d of existingDeals ?? []) {
+    if (d.order_id) dealMap.set(d.order_id, d as DealRecord);
   }
-
-  const { data: platforms } = await supabase
-    .from("platforms")
-    .select("id, name")
-    .eq("organization_id", session.organizationId);
 
   const platformIdMap = new Map<string, string>();
   for (const p of platforms ?? []) {
     platformIdMap.set(p.name.toLowerCase(), p.id);
   }
 
-  const notFound: string[] = [];
-  const errors: string[] = [];
-  let updated = 0;
-  let skipped = 0;
-  let created = 0;
+  // ─── Pro order_id alle Rows sammeln (für Kontext) ─────────────────────────
+  const rowsByOrder = new Map<string, AbgleichRow[]>();
+  for (const r of paidRows) {
+    if (!rowsByOrder.has(r.order_id)) rowsByOrder.set(r.order_id, []);
+    rowsByOrder.get(r.order_id)!.push(r);
+  }
 
+  // ─── Haupt-Verarbeitungs-Loop ─────────────────────────────────────────────
   for (const row of paidRows) {
     let deal = dealMap.get(row.order_id);
+    const orderRows = rowsByOrder.get(row.order_id) ?? [row];
 
     if (!deal) {
-      const hasSequence = !!row.installment_sequence;
-      const platformName = row.platform;
-      const platformId = platformIdMap.get(platformName) ?? null;
+      // ── Neuen Deal intelligent anlegen ────────────────────────────────────
+      const platformId = platformIdMap.get(row.platform) ?? null;
+      const productId = findProductId(products, row.product_name);
+
+      const paymentPlan: "one_time" | "installments" =
+        row.payment_plan ?? (row.total_installments || row.installment_sequence ? "installments" : "one_time");
+      const totalInstallments = row.total_installments;
+      const singleAmount = row.amount ?? 0;
+      const totalPrice = totalInstallments && singleAmount > 0
+        ? Math.round(singleAmount * totalInstallments * 100) / 100
+        : singleAmount;
+      const closeDate = row.date ?? new Date().toISOString().slice(0, 10);
+      const customerName = row.customer_name?.trim() || "Unbekannt – bitte ergänzen";
 
       const { data: newDeal, error: createError } = await supabase
         .from("deals")
         .insert({
           organization_id: session.organizationId,
           created_by: session.userId,
-          customer_name: "Unbekannt – bitte ergänzen",
+          customer_name: customerName,
           order_id: row.order_id,
           platform_id: platformId,
-          total_price: 0,
-          payment_type: hasSequence ? "installments" : "one_time",
-          close_date: new Date().toISOString().slice(0, 10),
+          product_id: productId,
+          total_price: totalPrice,
+          payment_type: paymentPlan,
+          close_date: closeDate,
         })
-        .select("id, payment_type")
+        .select("id, payment_type, customer_name, total_price, product_id")
         .single();
 
       if (createError || !newDeal) {
-        errors.push(`${row.order_id}: Deal konnte nicht angelegt werden.`);
+        errors.push(`${row.order_id}: Deal konnte nicht angelegt werden — ${createError?.message ?? "?"}`);
         if (!notFound.includes(row.order_id)) notFound.push(row.order_id);
         continue;
       }
 
       created++;
-      deal = { id: newDeal.id, payment_type: newDeal.payment_type };
+      deal = { id: newDeal.id, payment_type: newDeal.payment_type, customer_name: newDeal.customer_name, total_price: newDeal.total_price, product_id: newDeal.product_id };
       dealMap.set(row.order_id, deal);
 
-      if (deal.payment_type === "one_time") {
+      // Zahlungs-Records anlegen
+      if (paymentPlan === "one_time") {
         await supabase.from("one_time_payments").insert({
           deal_id: newDeal.id,
           organization_id: session.organizationId,
-          due_date: null,
+          due_date: closeDate,
         });
-      } else if (hasSequence) {
-        await supabase.from("installments").insert({
+      } else {
+        // Alle bekannten Raten anlegen
+        const maxSeq = totalInstallments
+          ?? Math.max(...orderRows.map((r) => r.installment_sequence ?? 1));
+        const rateAmount = totalInstallments && totalPrice > 0
+          ? Math.round((totalPrice / totalInstallments) * 100) / 100
+          : singleAmount;
+        const installmentsToCreate = Array.from({ length: maxSeq }, (_, k) => ({
           deal_id: newDeal.id,
           organization_id: session.organizationId,
-          sequence: row.installment_sequence!,
-          due_date: new Date().toISOString().slice(0, 10),
-          amount: 0,
-        });
+          sequence: k + 1,
+          due_date: closeDate,
+          amount: rateAmount,
+        }));
+        if (installmentsToCreate.length > 0) {
+          await supabase.from("installments").insert(installmentsToCreate);
+        }
+      }
+    } else {
+      // ── Bestehenden Deal anreichern wenn Platzhalterwerte vorhanden ────────
+      const isUnknown = deal.customer_name === "Unbekannt – bitte ergänzen";
+      const needsEnrichment =
+        (isUnknown && row.customer_name?.trim()) ||
+        (deal.total_price === 0 && row.amount && row.amount > 0) ||
+        (!deal.product_id && row.product_name);
+
+      if (needsEnrichment) {
+        const productId = !deal.product_id ? findProductId(products, row.product_name) : undefined;
+        const totalInstallments = row.total_installments;
+        const singleAmount = row.amount ?? 0;
+        const newTotal = totalInstallments && singleAmount > 0
+          ? Math.round(singleAmount * totalInstallments * 100) / 100
+          : singleAmount;
+
+        const shouldUpdateName = isUnknown && !!row.customer_name?.trim();
+        const shouldUpdatePrice = deal.total_price === 0 && newTotal > 0;
+        const shouldUpdateProduct = !!productId;
+
+        if (shouldUpdateName || shouldUpdatePrice || shouldUpdateProduct) {
+          await supabase.from("deals").update({
+            ...(shouldUpdateName ? { customer_name: row.customer_name!.trim() } : {}),
+            ...(shouldUpdatePrice ? { total_price: newTotal } : {}),
+            ...(shouldUpdateProduct ? { product_id: productId } : {}),
+          }).eq("id", deal.id).eq("organization_id", session.organizationId);
+          enriched++;
+        }
       }
     }
 
+    // ── Zahlung als bezahlt markieren ────────────────────────────────────────
     if (deal.payment_type === "one_time") {
       const { error } = await supabase
         .from("one_time_payments")
@@ -416,21 +506,39 @@ export async function processPaymentExport(rows: AbgleichRow[]): Promise<Abgleic
         .eq("deal_id", deal.id)
         .eq("organization_id", session.organizationId)
         .eq("paid", false);
-
       if (error) errors.push(`${row.order_id}: ${error.message}`);
       else updated++;
     } else {
       if (row.installment_sequence) {
-        const { error } = await supabase
+        // Prüfen ob Rate existiert
+        const { data: existing } = await supabase
           .from("installments")
-          .update({ paid: true, paid_at: new Date().toISOString() })
+          .select("id, paid")
           .eq("deal_id", deal.id)
           .eq("organization_id", session.organizationId)
           .eq("sequence", row.installment_sequence)
-          .eq("paid", false);
+          .maybeSingle();
 
-        if (error) errors.push(`${row.order_id} Rate ${row.installment_sequence}: ${error.message}`);
-        else updated++;
+        if (!existing) {
+          await supabase.from("installments").insert({
+            deal_id: deal.id,
+            organization_id: session.organizationId,
+            sequence: row.installment_sequence,
+            due_date: row.date ?? new Date().toISOString().slice(0, 10),
+            amount: row.amount ?? 0,
+            paid: true,
+            paid_at: new Date().toISOString(),
+          });
+          updated++;
+        } else if (!existing.paid) {
+          const { error } = await supabase
+            .from("installments")
+            .update({ paid: true, paid_at: new Date().toISOString() })
+            .eq("id", existing.id);
+          if (error) errors.push(`${row.order_id} Rate ${row.installment_sequence}: ${error.message}`);
+          else updated++;
+        }
+        // Bereits bezahlt → still, kein Fehler
       } else {
         const { error } = await supabase
           .from("installments")
@@ -438,17 +546,16 @@ export async function processPaymentExport(rows: AbgleichRow[]): Promise<Abgleic
           .eq("deal_id", deal.id)
           .eq("organization_id", session.organizationId)
           .eq("paid", false);
-
         if (error) errors.push(`${row.order_id}: ${error.message}`);
         else updated++;
       }
     }
   }
 
-  skipped = rows.length - paidRows.length;
+  const skipped = rows.length - paidRows.length;
 
   revalidatePath("/deals");
   revalidatePath("/import");
 
-  return { updated, skipped, created, notFound, errors };
+  return { updated, enriched, created, skipped, refunded, failed, notFound, errors };
 }

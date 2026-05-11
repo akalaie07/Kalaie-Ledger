@@ -16,10 +16,12 @@ import { NotePopup } from "./_components/note-popup";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
 
-const PAYMENT_LABEL: Record<string, string> = {
-  one_time: "Einmalzahlung",
-  installments: "Ratenzahlung",
-};
+function getPaymentLabel(paymentType: string, productType?: string | null): string {
+  if (paymentType === "one_time") return "Einmalzahlung";
+  if (productType === "subscription_monthly") return "Abo · monatlich";
+  if (productType === "subscription_yearly") return "Abo · jährlich";
+  return "Ratenzahlung";
+}
 
 function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
@@ -272,16 +274,23 @@ export default async function DealsPage({
                   {fmt(deal.total_price as number)}
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                      deal.payment_type === "one_time"
-                        ? "bg-blue-500/15 text-blue-400"
-                        : "bg-purple-500/15 text-purple-400",
-                    )}
-                  >
-                    {PAYMENT_LABEL[deal.payment_type]}
-                  </span>
+                  {(() => {
+                    const pt = (deal as Record<string, unknown>).products as { product_type?: string } | null;
+                    const label = getPaymentLabel(deal.payment_type, pt?.product_type);
+                    const isAbo = label.startsWith("Abo");
+                    return (
+                      <span className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                        deal.payment_type === "one_time"
+                          ? "bg-blue-500/15 text-blue-400"
+                          : isAbo
+                          ? "bg-violet-500/15 text-violet-400"
+                          : "bg-purple-500/15 text-purple-400",
+                      )}>
+                        {label}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3">
                   <Link href={`/deals/${deal.id}`} className="block space-y-0.5">
