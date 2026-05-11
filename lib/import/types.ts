@@ -70,6 +70,14 @@ export type PreviewAction =
   | "bootstrap_deal"
   | "error";
 
+export type FuzzyMatch = {
+  dealId: string;
+  dealCustomerName: string;
+  /** 0.0 – 1.0 */
+  score: number;
+  reasons: string[];
+};
+
 export type PreviewItem = {
   rowNumber: number;
   syntheticKey: string;
@@ -86,5 +94,7 @@ export type PreviewItem = {
   newValues: Record<string, unknown>;
   warnings: string[];
   conflicts: string[];
+  /** Fuzzy-Kandidaten für Items ohne Bestell-ID-Match */
+  suggestedDeals: FuzzyMatch[];
   normalized: NormalizedImportRow;
 };

@@ -2,11 +2,13 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { key: "deals", label: "Deals importieren", href: "/import/deals" },
+  { key: "migration", label: "Alte Buchhaltung importieren", href: "/import/migration" },
   { key: "zahlungsabgleich", label: "Zahlungsabgleich", href: "/import/zahlungsabgleich" },
 ] as const;
 
-export function ImportNav({ active }: { active: "deals" | "zahlungsabgleich" }) {
+type ActiveTab = "migration" | "zahlungsabgleich";
+
+export function ImportNav({ active }: { active: ActiveTab }) {
   return (
     <div className="flex gap-1 border-b border-border">
       {TABS.map((tab) => (

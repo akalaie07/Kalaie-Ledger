@@ -10,7 +10,9 @@ import type {
   PreviewItem,
   PreviewClassification,
   PreviewAction,
+  FuzzyMatch,
 } from "./types";
+import { findFuzzyMatches } from "./fuzzy";
 
 // =============================================================================
 // DB-Kontext-Typen (werden vom Server Action befüllt und übergeben)
@@ -46,12 +48,23 @@ export type DealContext = {
 /**
  * Klassifiziert alle normalisierten Import-Rows gegen den aktuellen DB-Zustand.
  * Reine Funktion — kein I/O, vollständig testbar.
+ *
+ * @param allDeals  Alle bekannten Deals der Org — wird für Fuzzy-Matching genutzt
+ *                  wenn kein exakter Bestell-ID-Match gefunden wird.
  */
 export function classifyRows(
   rows: NormalizedImportRow[],
   dealsByOrderId: Map<string, DealContext>,
+  allDeals: DealContext[] = [],
 ): PreviewItem[] {
-  return rows.map((row) => classifyRow(row, dealsByOrderId.get(row.externalOrderId)));
+  return rows.map((row) => {
+    const item = classifyRow(row, dealsByOrderId.get(row.externalOrderId));
+    // Fuzzy-Matches nur für Items ohne bestehenden Deal (kein Bestell-ID-Match)
+    if (item.oldValues === null && allDeals.length > 0) {
+      item.suggestedDeals = findFuzzyMatches(row, allDeals);
+    }
+    return item;
+  });
 }
 
 // =============================================================================
@@ -498,6 +511,7 @@ function make(
     newValues,
     warnings,
     conflicts,
+    suggestedDeals: [],
     normalized: row,
   };
 }

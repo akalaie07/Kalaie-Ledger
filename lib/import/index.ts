@@ -6,7 +6,10 @@ export type {
   PreviewClassification,
   PreviewAction,
   PreviewItem,
+  FuzzyMatch,
 } from "./types";
+
+export { findFuzzyMatches } from "./fuzzy";
 
 export { parseCopecartExport } from "./adapters/copecart";
 export { parseAblefyExport } from "./adapters/ablefy";
