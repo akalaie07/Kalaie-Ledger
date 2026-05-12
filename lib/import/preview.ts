@@ -58,7 +58,9 @@ export function classifyRows(
   allDeals: DealContext[] = [],
 ): PreviewItem[] {
   return rows.map((row) => {
-    const item = classifyRow(row, dealsByOrderId.get(row.externalOrderId));
+    const deal = dealsByOrderId.get(row.externalOrderId);
+    const item = classifyRow(row, deal);
+    item.dealId = deal?.id ?? null;
     // Fuzzy-Matches nur für Items ohne bestehenden Deal (kein Bestell-ID-Match)
     if (item.oldValues === null && allDeals.length > 0) {
       item.suggestedDeals = findFuzzyMatches(row, allDeals);
@@ -507,6 +509,7 @@ function make(
     actionLabel: actionLabel || ACTION_LABELS[action],
     confidence,
     reason,
+    dealId: null,
     oldValues,
     newValues,
     warnings,

@@ -88,6 +88,8 @@ export type PreviewItem = {
   /** 0.0 – 1.0 */
   confidence: number;
   reason: string;
+  /** ID des zugehörigen Deals in der DB (null = kein Deal gefunden) */
+  dealId: string | null;
   /** Aktueller Zustand in der DB (null = kein Deal gefunden) */
   oldValues: Record<string, unknown> | null;
   /** Was geschrieben würde */

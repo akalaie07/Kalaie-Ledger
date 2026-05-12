@@ -1,0 +1,32 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { requireRole } from "@/lib/auth/get-current-org";
+import { ChevronLeft } from "lucide-react";
+import { PlatformImportWizard } from "../../_components/platform-import-wizard";
+import { ImportNav } from "../../_components/import-nav";
+
+export const metadata: Metadata = { title: "Ablefy-Import — Buchhaltung" };
+
+export default async function AblefyImportPage() {
+  await requireRole("admin");
+
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
+      <div className="space-y-1">
+        <Link
+          href="/import/zahlungsabgleich"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="h-3 w-3" />
+          Zahlungsabgleich
+        </Link>
+        <h1 className="text-xl font-semibold">Ablefy-Import</h1>
+        <p className="text-sm text-muted-foreground">
+          Zahlungsexport aus Ablefy hochladen und gegen bestehende Deals abgleichen
+        </p>
+      </div>
+      <ImportNav active="zahlungsabgleich" />
+      <PlatformImportWizard platform="ablefy" />
+    </div>
+  );
+}
