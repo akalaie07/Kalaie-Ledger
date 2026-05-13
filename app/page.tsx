@@ -23,5 +23,5 @@ export default async function RootPage() {
     redirect("/login");
   }
 
-  redirect("/deals");
+  redirect("/dashboard");
 }

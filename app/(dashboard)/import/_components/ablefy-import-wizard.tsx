@@ -1,0 +1,1116 @@
+"use client";
+
+/**
+ * AblefyImportWizard — Spezialisierter 4-Schritt Import für Ablefy CSV-Exporte.
+ *
+ * Schritt 1: CSV hochladen (Drag & Drop, UTF-8 / Latin-1 Fallback)
+ * Schritt 2: Felder zuordnen (Auto-Erkennung + manuelle Dropdowns, 3-Zeilen Vorschau)
+ * Schritt 3: Zeilen prüfen & bearbeiten (editierbare Tabelle, Issue-Hervorhebung)
+ * Schritt 4: Import bestätigen → importDeals() → Ergebnis
+ */
+
+import { useRef, useState, useTransition } from "react";
+import {
+  Upload,
+  FileText,
+  AlertTriangle,
+  CheckCircle,
+  X,
+  ArrowRight,
+  Trash2,
+  Info,
+} from "lucide-react";
+
+import { importDeals } from "@/lib/actions/import";
+import type { ImportRow, ImportResult } from "@/lib/actions/import";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+type WizardStep = "upload" | "mapping" | "edit" | "done";
+
+/** Welche CSV-Spalten-Index für jedes Zielfeld */
+type ColumnMap = {
+  customerFirst: number;
+  customerLast: number;
+  orderId: number;
+  product: number;
+  totalPrice: number;
+  paymentType: number;
+  date: number;
+  status: number; // für Filter (optional)
+};
+
+type EditableRow = {
+  _id: string;
+  customer_name: string;
+  order_id: string;
+  product_name: string;
+  total_price: string;
+  payment_type: string;
+  close_date: string;
+  _rawStatus: string;
+};
+
+// =============================================================================
+// Konfiguration der Zielfelder für den Mapping-Schritt
+// =============================================================================
+
+const MAPPING_FIELDS: Array<{
+  key: keyof Omit<ColumnMap, "status">;
+  label: string;
+  hint: string;
+  required: boolean;
+  ablefyCol: string; // erwarteter Ablefy-Spaltenname
+}> = [
+  {
+    key: "customerFirst",
+    label: "Vorname",
+    hint: "Kundenvorname",
+    required: true,
+    ablefyCol: "KAEUFER VORNAME",
+  },
+  {
+    key: "customerLast",
+    label: "Nachname",
+    hint: "Kundennachname",
+    required: false,
+    ablefyCol: "KAEUFER NACHNAME",
+  },
+  {
+    key: "orderId",
+    label: "Bestell-ID",
+    hint: "Eindeutige Bestell-Nummer",
+    required: true,
+    ablefyCol: "BESTELL-ID",
+  },
+  {
+    key: "product",
+    label: "Produkt",
+    hint: "Produktname",
+    required: false,
+    ablefyCol: "PRODUKTNAME",
+  },
+  {
+    key: "totalPrice",
+    label: "Preis (€)",
+    hint: "Gesamtbetrag (FÄLLIGER BETRAG)",
+    required: true,
+    ablefyCol: "FÄLLIGER BETRAG",
+  },
+  {
+    key: "paymentType",
+    label: "Zahlungsart",
+    hint: "Einmalzahlung / Ratenzahlung",
+    required: true,
+    ablefyCol: "PLAN",
+  },
+  {
+    key: "date",
+    label: "Datum",
+    hint: "Transaktionsdatum",
+    required: true,
+    ablefyCol: "DATUM",
+  },
+];
+
+// =============================================================================
+// Hilfs-Funktionen
+// =============================================================================
+
+/** Einfaches CSV-Parsen mit Semikolon als Trennzeichen */
+function parseCsvLine(line: string, sep = ";"): string[] {
+  const result: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') {
+      inQuotes = !inQuotes;
+    } else if (line[i] === sep && !inQuotes) {
+      result.push(field.trim());
+      field = "";
+    } else {
+      field += line[i];
+    }
+  }
+  result.push(field.trim());
+  return result;
+}
+
+/** Normalisiert Header-Namen für fuzzy Matching (Umlaute → ae/oe/ue etc.) */
+function normHeader(h: string): string {
+  return h
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9\-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Auto-Erkennung der Spalten-Indizes aus den CSV-Headern */
+function autoDetect(headers: string[]): ColumnMap {
+  const norm = headers.map(normHeader);
+
+  function find(...patterns: string[]): number {
+    for (const pat of patterns) {
+      const p = normHeader(pat);
+      const i = norm.findIndex((h) => h === p || h.includes(p));
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  return {
+    customerFirst: find("kaeufer vorname", "vorname", "first name", "firstname"),
+    customerLast: find("kaeufer nachname", "nachname", "last name", "lastname"),
+    orderId: find("bestell-id", "bestellnummer", "order id", "order-id"),
+    product: find("produktname", "produkt", "product name", "product"),
+    totalPrice: find(
+      "faelliger betrag",
+      "falliger betrag",
+      "gesamtbetrag",
+      "faelliger",
+      "total",
+      "betrag",
+    ),
+    paymentType: find("plan", "zahlungsplan", "zahlungstyp"),
+    date: find("datum", "erstellt am", "transaktionsdatum", "zahlungsdatum", "date"),
+    status: find("status", "zahlungsstatus"),
+  };
+}
+
+/** Parst deutsches Preisformat: "1.234,56" → 1234.56 */
+function parseGermanPrice(val: string): number {
+  if (!val) return 0;
+  const clean = val
+    .replace(/[€$\s]/g, "")
+    .replace(/\./g, "") // Tausenderpunkt entfernen
+    .replace(",", "."); // Dezimalkomma → Punkt
+  const n = parseFloat(clean);
+  return isNaN(n) ? 0 : n;
+}
+
+/** PLAN-Wert → importDeals-kompatible Zahlungsart */
+function normalizePaymentType(val: string): string {
+  const v = val.toLowerCase();
+  if (v.includes("einmal") || v === "one" || v === "one_time") return "one_time";
+  if (
+    v.includes("rate") ||
+    v.includes("abo") ||
+    v.includes("subscription") ||
+    /\d+\s*x/.test(v)
+  )
+    return "installments";
+  return "one_time"; // Default: Einmalzahlung
+}
+
+function formatPaymentType(pt: string): string {
+  if (pt === "one_time") return "Einmalzahlung";
+  if (pt === "installments") return "Ratenzahlung";
+  return pt;
+}
+
+/** Gibt die Probleme einer Zeile zurück */
+function getIssues(row: EditableRow): string[] {
+  const issues: string[] = [];
+  if (!row.customer_name.trim()) issues.push("Kundenname fehlt");
+  if (!row.order_id.trim()) issues.push("Bestell-ID fehlt");
+  const price = parseGermanPrice(row.total_price);
+  if (!row.total_price.trim() || price <= 0) issues.push("Preis fehlt/ungültig");
+  if (!row.close_date.trim()) issues.push("Datum fehlt");
+  return issues;
+}
+
+// =============================================================================
+// Schritt-Anzeige
+// =============================================================================
+
+const STEPS = [
+  { id: "upload", label: "Datei" },
+  { id: "mapping", label: "Felder" },
+  { id: "edit", label: "Prüfen" },
+  { id: "done", label: "Fertig" },
+] as const;
+
+function StepBar({ current }: { current: WizardStep }) {
+  const idx = STEPS.findIndex((s) => s.id === current);
+  return (
+    <div className="flex items-center gap-0">
+      {STEPS.map((s, i) => {
+        const done = i < idx;
+        const active = i === idx;
+        return (
+          <div key={s.id} className="flex items-center">
+            <div
+              className={cn(
+                "flex items-center justify-center rounded-full w-7 h-7 text-xs font-semibold transition-colors",
+                done
+                  ? "bg-emerald-500 text-white"
+                  : active
+                    ? "bg-cyan-500 text-white"
+                    : "bg-muted text-muted-foreground",
+              )}
+            >
+              {done ? <CheckCircle className="h-4 w-4" /> : i + 1}
+            </div>
+            <span
+              className={cn(
+                "ml-1.5 text-xs font-medium",
+                active ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {s.label}
+            </span>
+            {i < STEPS.length - 1 && (
+              <div
+                className={cn(
+                  "mx-3 h-px w-8 transition-colors",
+                  done ? "bg-emerald-500" : "bg-border",
+                )}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// =============================================================================
+// Haupt-Komponente
+// =============================================================================
+
+export function AblefyImportWizard() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<WizardStep>("upload");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rawRows, setRawRows] = useState<string[][]>([]);
+  const [colMap, setColMap] = useState<ColumnMap>({
+    customerFirst: -1,
+    customerLast: -1,
+    orderId: -1,
+    product: -1,
+    totalPrice: -1,
+    paymentType: -1,
+    date: -1,
+    status: -1,
+  });
+  const [editableRows, setEditableRows] = useState<EditableRow[]>([]);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [importing, startImport] = useTransition();
+
+  const fmt = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+
+  // ── Schritt 1: Datei verarbeiten ─────────────────────────────────────────
+
+  function processCsv(name: string, text: string) {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) {
+      setParseError("Die Datei enthält keine Daten.");
+      return;
+    }
+
+    const hdrs = parseCsvLine(lines[0], ";");
+    const rows = lines.slice(1).map((l) => parseCsvLine(l, ";"));
+    const detected = autoDetect(hdrs);
+
+    if (detected.orderId < 0) {
+      setParseError(
+        "Keine Bestell-ID Spalte gefunden. Ist das wirklich ein Ablefy-Export?",
+      );
+      return;
+    }
+
+    setParseError(null);
+    setFileName(name);
+    setHeaders(hdrs);
+    setRawRows(rows);
+    setColMap(detected);
+  }
+
+  function handleFile(file: File) {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setParseError("Bitte eine CSV-Datei hochladen (.csv).");
+      return;
+    }
+    setParseError(null);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target!.result as string;
+      // Mojibake-Heuristik: wenn Ã oder Replacement Char → latin1 erneut lesen
+      if (text.includes("Ã") || text.includes("�")) {
+        const r2 = new FileReader();
+        r2.onload = (e2) => processCsv(file.name, e2.target!.result as string);
+        r2.readAsText(file, "iso-8859-1");
+      } else {
+        processCsv(file.name, text);
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  // ── Schritt 2 → 3: Mapping anwenden ─────────────────────────────────────
+
+  function applyMapping() {
+    const get = (row: string[], idx: number) =>
+      idx >= 0 ? (row[idx]?.trim() ?? "") : "";
+
+    let rows: EditableRow[] = rawRows
+      .filter((row) => row.some((cell) => cell.trim()))
+      .map((row, i) => {
+        const first = get(row, colMap.customerFirst);
+        const last = get(row, colMap.customerLast);
+        const customerName = [first, last].filter(Boolean).join(" ") || "Unbekannt";
+        const rawPayment = get(row, colMap.paymentType);
+        const rawStatus = get(row, colMap.status);
+
+        return {
+          _id: `row-${i}`,
+          customer_name: customerName,
+          order_id: get(row, colMap.orderId),
+          product_name: get(row, colMap.product),
+          total_price: get(row, colMap.totalPrice),
+          payment_type: normalizePaymentType(rawPayment),
+          close_date: get(row, colMap.date),
+          _rawStatus: rawStatus,
+        };
+      });
+
+    // Filter: nur bezahlte Transaktionen anzeigen, wenn Status-Spalte erkannt
+    if (colMap.status >= 0) {
+      const before = rows.length;
+      rows = rows.filter((row) => {
+        const s = row._rawStatus.toLowerCase();
+        return (
+          s.includes("bezahlt") ||
+          s.includes("erfolgreich") ||
+          s.includes("abgeschlossen") ||
+          s.includes("paid") ||
+          s.includes("complete")
+        );
+      });
+      if (rows.length === 0) {
+        setParseError(
+          `Keine bezahlten Zeilen gefunden (${before} Zeilen gefiltert). ` +
+            "Prüfe ob die Status-Spalte korrekt zugeordnet ist.",
+        );
+        return;
+      }
+    }
+
+    setParseError(null);
+    setEditableRows(rows);
+    setStep("edit");
+  }
+
+  // ── Schritt 3: Zeilen bearbeiten ─────────────────────────────────────────
+
+  function updateRow(
+    id: string,
+    field: keyof Omit<EditableRow, "_id" | "_rawStatus">,
+    value: string,
+  ) {
+    setEditableRows((rows) =>
+      rows.map((r) => (r._id === id ? { ...r, [field]: value } : r)),
+    );
+  }
+
+  function removeRow(id: string) {
+    setEditableRows((rows) => rows.filter((r) => r._id !== id));
+  }
+
+  // ── Schritt 4: Import ────────────────────────────────────────────────────
+
+  function handleImport() {
+    const toImport: ImportRow[] = editableRows.map((row) => ({
+      customer_name: row.customer_name,
+      order_id: row.order_id || undefined,
+      platform_name: "Ablefy",
+      product_name: row.product_name || undefined,
+      total_price: String(parseGermanPrice(row.total_price)),
+      payment_type: row.payment_type,
+      close_date: row.close_date,
+    }));
+
+    startImport(async () => {
+      const res = await importDeals(toImport);
+      setResult(res);
+      setStep("done");
+    });
+  }
+
+  function fullReset() {
+    setStep("upload");
+    setFileName(null);
+    setHeaders([]);
+    setRawRows([]);
+    setColMap({
+      customerFirst: -1,
+      customerLast: -1,
+      orderId: -1,
+      product: -1,
+      totalPrice: -1,
+      paymentType: -1,
+      date: -1,
+      status: -1,
+    });
+    setEditableRows([]);
+    setParseError(null);
+    setResult(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  const issueRows = editableRows.filter((r) => getIssues(r).length > 0);
+  const readyRows = editableRows.filter((r) => getIssues(r).length === 0);
+
+  // ── Vorschau-Zeilen (erste 3) für Mapping-Schritt ────────────────────────
+  const previewRows = rawRows.slice(0, 3);
+
+  // ==========================================================================
+  // Render
+  // ==========================================================================
+
+  return (
+    <div className="space-y-6">
+      {/* Fortschrittsanzeige */}
+      <StepBar current={step} />
+
+      {/* ── Schritt 1: Upload ─────────────────────────────────────────────── */}
+      {step === "upload" && (
+        <div className="space-y-4">
+          <div
+            onDrop={handleDrop}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onClick={() => fileRef.current?.click()}
+            className={cn(
+              "rounded-xl border-2 border-dashed px-8 py-12 text-center cursor-pointer transition-all space-y-3",
+              isDragging
+                ? "border-cyan-500 bg-cyan-500/5"
+                : "border-border bg-muted/10 hover:border-border/80 hover:bg-muted/20",
+            )}
+          >
+            <div className="flex justify-center">
+              <div
+                className={cn(
+                  "rounded-full p-4 transition-colors",
+                  isDragging ? "bg-cyan-500/20" : "bg-muted",
+                )}
+              >
+                <Upload
+                  className={cn(
+                    "h-7 w-7 transition-colors",
+                    isDragging ? "text-cyan-400" : "text-muted-foreground",
+                  )}
+                />
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-base">
+                {fileName ? "Andere Datei wählen" : "Ablefy-CSV hochladen"}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Datei hier ablegen oder klicken zum Auswählen
+              </p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">
+                Ablefy → Statistiken → Transaktionen → Export
+              </p>
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+          </div>
+
+          {parseError && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              {parseError}
+            </div>
+          )}
+
+          {fileName && rawRows.length > 0 && !parseError && (
+            <>
+              <div className="flex items-center gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-4 py-3">
+                <FileText className="h-4 w-4 text-cyan-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{fileName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {rawRows.length} Zeilen · {headers.length} Spalten erkannt
+                  </p>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fullReset();
+                  }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <Button onClick={() => setStep("mapping")} className="gap-2">
+                Felder zuordnen
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Schritt 2: Felder zuordnen ────────────────────────────────────── */}
+      {step === "mapping" && (
+        <div className="space-y-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold">Felder zuordnen</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Prüfe die automatische Erkennung und passe sie bei Bedarf an.
+              </p>
+            </div>
+            <button
+              onClick={() => setStep("upload")}
+              className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Mapping-Tabelle */}
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-muted/40">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">
+                    Zielfeld
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">
+                    Hinweis
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">
+                    Spalte zuordnen
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {MAPPING_FIELDS.map((f) => {
+                  const currentIdx = colMap[f.key];
+                  const isDetected = currentIdx >= 0;
+                  return (
+                    <tr key={f.key} className="hover:bg-muted/10 transition-colors">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-xs">{f.label}</span>
+                          {f.required && (
+                            <span className="text-destructive text-xs">*</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {f.hint}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={currentIdx}
+                            onChange={(e) =>
+                              setColMap((m) => ({
+                                ...m,
+                                [f.key]: parseInt(e.target.value),
+                              }))
+                            }
+                            className={cn(
+                              "h-8 rounded-md border bg-transparent px-2 py-1 text-xs shadow-sm transition-colors",
+                              "focus:outline-none focus:ring-1 focus:ring-ring",
+                              isDetected
+                                ? "border-emerald-500/50 text-foreground"
+                                : "border-border text-muted-foreground",
+                            )}
+                          >
+                            <option value={-1}>— nicht zuordnen —</option>
+                            {headers.map((h, i) => (
+                              <option key={i} value={i}>
+                                {h}
+                              </option>
+                            ))}
+                          </select>
+                          {isDetected && (
+                            <span className="text-[10px] text-emerald-400 font-medium">
+                              ✓ erkannt
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Status-Spalte separat (für Filter) */}
+                <tr className="hover:bg-muted/10 transition-colors">
+                  <td className="px-4 py-2.5">
+                    <span className="font-medium text-xs">Status</span>
+                    <p className="text-[10px] text-muted-foreground/60">für Filter</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                    Nur bezahlte Zeilen importieren
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={colMap.status}
+                        onChange={(e) =>
+                          setColMap((m) => ({
+                            ...m,
+                            status: parseInt(e.target.value),
+                          }))
+                        }
+                        className={cn(
+                          "h-8 rounded-md border bg-transparent px-2 py-1 text-xs shadow-sm",
+                          "focus:outline-none focus:ring-1 focus:ring-ring",
+                          colMap.status >= 0
+                            ? "border-emerald-500/50"
+                            : "border-border text-muted-foreground",
+                        )}
+                      >
+                        <option value={-1}>— kein Filter —</option>
+                        {headers.map((h, i) => (
+                          <option key={i} value={i}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                      {colMap.status >= 0 && (
+                        <span className="text-[10px] text-emerald-400 font-medium">
+                          ✓ erkannt
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Vorschau der ersten 3 Zeilen */}
+          {previewRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5">
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground font-medium">
+                  Vorschau (erste {previewRows.length} Zeilen)
+                </p>
+              </div>
+              <div className="rounded-lg border border-border overflow-x-auto">
+                <table className="text-xs w-full">
+                  <thead className="border-b border-border bg-muted/40">
+                    <tr>
+                      {["Kundenname", "Bestell-ID", "Produkt", "Preis", "Zahlung", "Datum"].map(
+                        (h) => (
+                          <th
+                            key={h}
+                            className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap"
+                          >
+                            {h}
+                          </th>
+                        ),
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {previewRows.map((row, i) => {
+                      const get = (idx: number) =>
+                        idx >= 0 ? (row[idx]?.trim() ?? "—") : "—";
+                      const first = get(colMap.customerFirst);
+                      const last = get(colMap.customerLast);
+                      const name =
+                        [first, last].filter((v) => v !== "—").join(" ") || "—";
+                      const price = get(colMap.totalPrice);
+                      const parsedPrice = parseGermanPrice(price);
+                      return (
+                        <tr key={i} className="hover:bg-muted/10">
+                          <td className="px-3 py-1.5 whitespace-nowrap font-medium">
+                            {name}
+                          </td>
+                          <td className="px-3 py-1.5 font-mono text-muted-foreground text-[10px]">
+                            {get(colMap.orderId)}
+                          </td>
+                          <td className="px-3 py-1.5 text-muted-foreground max-w-[120px] truncate">
+                            {get(colMap.product)}
+                          </td>
+                          <td className="px-3 py-1.5 tabular-nums">
+                            {parsedPrice > 0 ? fmt.format(parsedPrice) : price}
+                          </td>
+                          <td className="px-3 py-1.5 text-muted-foreground">
+                            {formatPaymentType(
+                              normalizePaymentType(get(colMap.paymentType)),
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 tabular-nums text-muted-foreground">
+                            {get(colMap.date)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {parseError && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              {parseError}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <Button onClick={applyMapping} className="gap-2">
+              Zeilen prüfen & bearbeiten
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" onClick={() => setStep("upload")}>
+              ← Zurück
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Schritt 3: Zeilen prüfen & bearbeiten ─────────────────────────── */}
+      {step === "edit" && (
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold">
+                {editableRows.length} Zeilen zur Prüfung
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Daten direkt bearbeiten oder fehlerhafte Zeilen entfernen.
+              </p>
+            </div>
+            <button
+              onClick={() => setStep("mapping")}
+              className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Zusammenfassung */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+              <p className="text-xs text-muted-foreground">Bereit</p>
+              <p className="text-xl font-semibold text-emerald-400">{readyRows.length}</p>
+            </div>
+            <div
+              className={cn(
+                "rounded-lg border px-4 py-3",
+                issueRows.length > 0
+                  ? "border-amber-500/30 bg-amber-500/5"
+                  : "border-border bg-muted/5",
+              )}
+            >
+              <p className="text-xs text-muted-foreground">Mit Problemen</p>
+              <p
+                className={cn(
+                  "text-xl font-semibold",
+                  issueRows.length > 0 ? "text-amber-400" : "text-muted-foreground",
+                )}
+              >
+                {issueRows.length}
+              </p>
+            </div>
+          </div>
+
+          {issueRows.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <p>
+                {issueRows.length}{" "}
+                {issueRows.length === 1 ? "Zeile hat Probleme" : "Zeilen haben Probleme"}{" "}
+                — bitte korrigieren oder entfernen. Zeilen mit Problemen werden beim Import
+                übersprungen.
+              </p>
+            </div>
+          )}
+
+          {/* Editierbare Tabelle */}
+          <div className="rounded-lg border border-border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b border-border bg-muted/40">
+                  <tr>
+                    <th className="px-2 py-2.5 text-left font-medium text-muted-foreground">
+                      #
+                    </th>
+                    <th className="px-2 py-2.5 text-left font-medium text-muted-foreground min-w-[140px]">
+                      Kundenname <span className="text-destructive">*</span>
+                    </th>
+                    <th className="px-2 py-2.5 text-left font-medium text-muted-foreground min-w-[120px]">
+                      Bestell-ID <span className="text-destructive">*</span>
+                    </th>
+                    <th className="px-2 py-2.5 text-left font-medium text-muted-foreground min-w-[120px]">
+                      Produkt
+                    </th>
+                    <th className="px-2 py-2.5 text-left font-medium text-muted-foreground min-w-[90px]">
+                      Preis (€) <span className="text-destructive">*</span>
+                    </th>
+                    <th className="px-2 py-2.5 text-left font-medium text-muted-foreground min-w-[110px]">
+                      Zahlung <span className="text-destructive">*</span>
+                    </th>
+                    <th className="px-2 py-2.5 text-left font-medium text-muted-foreground min-w-[110px]">
+                      Datum <span className="text-destructive">*</span>
+                    </th>
+                    <th className="px-2 py-2.5 w-8" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {editableRows.map((row, i) => {
+                    const issues = getIssues(row);
+                    const hasIssue = issues.length > 0;
+                    return (
+                      <tr
+                        key={row._id}
+                        className={cn(
+                          "transition-colors",
+                          hasIssue ? "bg-amber-500/5 hover:bg-amber-500/10" : "hover:bg-muted/10",
+                        )}
+                      >
+                        <td className="px-2 py-1.5 text-muted-foreground tabular-nums">
+                          {i + 1}
+                          {hasIssue && (
+                            <AlertTriangle className="h-3 w-3 text-amber-400 inline ml-1" />
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={row.customer_name}
+                            onChange={(e) =>
+                              updateRow(row._id, "customer_name", e.target.value)
+                            }
+                            className={cn(
+                              "w-full rounded border px-2 py-1 bg-transparent text-xs",
+                              "focus:outline-none focus:ring-1 focus:ring-ring",
+                              !row.customer_name.trim()
+                                ? "border-amber-500/60"
+                                : "border-border",
+                            )}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={row.order_id}
+                            onChange={(e) =>
+                              updateRow(row._id, "order_id", e.target.value)
+                            }
+                            className={cn(
+                              "w-full rounded border px-2 py-1 bg-transparent text-xs font-mono",
+                              "focus:outline-none focus:ring-1 focus:ring-ring",
+                              !row.order_id.trim()
+                                ? "border-amber-500/60"
+                                : "border-border",
+                            )}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={row.product_name}
+                            onChange={(e) =>
+                              updateRow(row._id, "product_name", e.target.value)
+                            }
+                            className="w-full rounded border border-border px-2 py-1 bg-transparent text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={row.total_price}
+                            onChange={(e) =>
+                              updateRow(row._id, "total_price", e.target.value)
+                            }
+                            className={cn(
+                              "w-full rounded border px-2 py-1 bg-transparent text-xs tabular-nums",
+                              "focus:outline-none focus:ring-1 focus:ring-ring",
+                              parseGermanPrice(row.total_price) <= 0 && row.total_price
+                                ? "border-amber-500/60"
+                                : !row.total_price.trim()
+                                  ? "border-amber-500/60"
+                                  : "border-border",
+                            )}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={row.payment_type}
+                            onChange={(e) =>
+                              updateRow(row._id, "payment_type", e.target.value)
+                            }
+                            className="w-full rounded border border-border px-2 py-1 bg-transparent text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                          >
+                            <option value="one_time">Einmalzahlung</option>
+                            <option value="installments">Ratenzahlung</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            value={row.close_date}
+                            onChange={(e) =>
+                              updateRow(row._id, "close_date", e.target.value)
+                            }
+                            placeholder="TT.MM.JJJJ"
+                            className={cn(
+                              "w-full rounded border px-2 py-1 bg-transparent text-xs tabular-nums",
+                              "focus:outline-none focus:ring-1 focus:ring-ring",
+                              !row.close_date.trim()
+                                ? "border-amber-500/60"
+                                : "border-border",
+                            )}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <button
+                            onClick={() => removeRow(row._id)}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            title="Zeile entfernen"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex gap-3 items-center flex-wrap">
+            <Button
+              onClick={handleImport}
+              disabled={importing || readyRows.length === 0}
+              className="gap-2"
+            >
+              {importing
+                ? "Wird importiert…"
+                : `${readyRows.length} ${readyRows.length === 1 ? "Deal" : "Deals"} importieren`}
+            </Button>
+            {issueRows.length > 0 && (
+              <p className="text-xs text-amber-400">
+                {issueRows.length} fehlerhafte {issueRows.length === 1 ? "Zeile" : "Zeilen"} werden
+                übersprungen
+              </p>
+            )}
+            <Button variant="outline" onClick={() => setStep("mapping")}>
+              ← Zurück
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Schritt 4: Ergebnis ───────────────────────────────────────────── */}
+      {step === "done" && result && (
+        <div className="space-y-4">
+          <div
+            className={cn(
+              "rounded-xl border p-5 space-y-4",
+              result.errors.length > 0
+                ? "border-rose-500/40 bg-rose-500/5"
+                : "border-emerald-500/40 bg-emerald-500/5",
+            )}
+          >
+            <div className="flex items-center gap-3">
+              {result.errors.length > 0 ? (
+                <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0" />
+              )}
+              <div>
+                <p className="font-semibold">Import abgeschlossen</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Ablefy · {fileName}
+                </p>
+              </div>
+            </div>
+
+            {/* Ergebnis-Zahlen */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Angelegt</p>
+                <p className="text-lg font-semibold text-emerald-400">{result.imported}</p>
+              </div>
+              <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Aktualisiert</p>
+                <p className="text-lg font-semibold text-blue-400">{result.updated}</p>
+              </div>
+              <div className="rounded-lg border border-muted px-3 py-2">
+                <p className="text-xs text-muted-foreground">Übersprungen</p>
+                <p className="text-lg font-semibold text-muted-foreground">{result.skipped}</p>
+              </div>
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Fehler</p>
+                <p className="text-lg font-semibold text-rose-400">{result.errors.length}</p>
+              </div>
+            </div>
+
+            {result.errors.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-rose-400">Fehlerdetails:</p>
+                <ul className="space-y-0.5">
+                  {result.errors.slice(0, 8).map((e, i) => (
+                    <li key={i} className="text-xs text-rose-400/80">
+                      • {e}
+                    </li>
+                  ))}
+                  {result.errors.length > 8 && (
+                    <li className="text-xs text-rose-400/60">
+                      + {result.errors.length - 8} weitere…
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 flex-wrap">
+            <Button variant="outline" onClick={fullReset}>
+              Weiteren Import starten
+            </Button>
+            {(result.imported > 0 || result.updated > 0) && (
+              <a
+                href="/deals"
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Deals ansehen →
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

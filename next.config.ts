@@ -34,6 +34,93 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  async redirects() {
+    return [
+      // Forderungsmanagement → Forderungen
+      {
+        source: "/forderungsmanagement",
+        destination: "/forderungen/mahnung",
+        permanent: true,
+      },
+      {
+        source: "/forderungsmanagement/mahnung",
+        destination: "/forderungen/mahnung",
+        permanent: true,
+      },
+      {
+        source: "/forderungsmanagement/inkasso",
+        destination: "/forderungen/inkasso",
+        permanent: true,
+      },
+      // Standalone Inkasso-Seite → neue Route
+      {
+        source: "/inkasso",
+        destination: "/forderungen/inkasso",
+        permanent: true,
+      },
+      // Einstellungen → Verwaltung
+      {
+        source: "/einstellungen/stammdaten",
+        destination: "/verwaltung/stammdaten",
+        permanent: true,
+      },
+      {
+        source: "/einstellungen/benutzer",
+        destination: "/verwaltung/benutzer",
+        permanent: true,
+      },
+      {
+        source: "/einstellungen",
+        destination: "/verwaltung/stammdaten",
+        permanent: true,
+      },
+      // Chat → Verwaltung/Chat
+      {
+        source: "/chat",
+        destination: "/verwaltung/chat",
+        permanent: true,
+      },
+      // Berichte → Analyse
+      {
+        source: "/berichte",
+        destination: "/analyse/berichte",
+        permanent: true,
+      },
+      // Import — alte Sub-Routen
+      {
+        source: "/import/deals",
+        destination: "/import",
+        permanent: true,
+      },
+      {
+        source: "/import/zahlungsabgleich",
+        destination: "/import/plattform",
+        permanent: true,
+      },
+      {
+        source: "/import/zahlungsabgleich/copecart",
+        destination: "/import/plattform/copecart",
+        permanent: true,
+      },
+      {
+        source: "/import/zahlungsabgleich/digistore",
+        destination: "/import/plattform/digistore",
+        permanent: true,
+      },
+      {
+        source: "/import/zahlungsabgleich/ablefy",
+        destination: "/import/plattform/ablefy",
+        permanent: true,
+      },
+      // Zahlungsabgleich standalone → Import-Plattform
+      {
+        source: "/zahlungsabgleich",
+        destination: "/import/plattform",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

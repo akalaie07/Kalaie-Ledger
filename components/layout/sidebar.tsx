@@ -13,7 +13,13 @@ import {
   Users,
   MessageSquare,
   Bell,
-  ChevronRight,
+  LayoutDashboard,
+  PlusCircle,
+  ArrowDownToLine,
+  History,
+  AlertCircle,
+  Gavel,
+  Clock,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -40,64 +46,93 @@ interface SidebarProps {
   initialMembers: Member[];
 }
 
-type ChildItem = { href: string; label: string };
+// ─── Nav-Typen ────────────────────────────────────────────────────────────────
 
 type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
   roles: Role[];
-  children?: ChildItem[];
 };
 
-const navItems: NavItem[] = [
+type NavSection = {
+  sectionLabel: string;
+  roles: Role[];
+  items: NavItem[];
+};
+
+type SidebarEntry = NavItem | NavSection;
+
+function isNavSection(entry: SidebarEntry): entry is NavSection {
+  return "sectionLabel" in entry;
+}
+
+// ─── Navigation-Einträge ──────────────────────────────────────────────────────
+
+const sidebarEntries: SidebarEntry[] = [
+  // Dashboard — standalone
   {
-    href: "/deals",
-    label: "Deals",
-    icon: FileText,
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
     roles: ["admin", "closer", "sales_partner"],
   },
+
+  // VERKAUF
   {
-    href: "/forderungsmanagement",
-    label: "Forderungsmanagement",
-    icon: Bell,
-    roles: ["admin"],
-    children: [
-      { href: "/forderungsmanagement/mahnung", label: "Mahnung" },
-      { href: "/forderungsmanagement/inkasso", label: "Inkasso" },
+    sectionLabel: "Verkauf",
+    roles: ["admin", "closer", "sales_partner"],
+    items: [
+      { href: "/deals", label: "Deals", icon: FileText, roles: ["admin", "closer", "sales_partner"] },
+      { href: "/deals/new", label: "Neuer Deal", icon: PlusCircle, roles: ["admin", "closer", "sales_partner"] },
     ],
   },
+
+  // IMPORT
   {
-    href: "/berichte",
-    label: "Berichte",
-    icon: BarChart2,
+    sectionLabel: "Import",
     roles: ["admin"],
+    items: [
+      { href: "/import", label: "Import-Zentrale", icon: Upload, roles: ["admin"] },
+      { href: "/import/plattform", label: "Plattform-Import", icon: ArrowDownToLine, roles: ["admin"] },
+      { href: "/import/historie", label: "Historie", icon: History, roles: ["admin"] },
+      { href: "/import/konflikte", label: "Konflikte", icon: AlertCircle, roles: ["admin"] },
+    ],
   },
+
+  // FORDERUNGEN
   {
-    href: "/import/deals",
-    label: "Importieren",
-    icon: Upload,
+    sectionLabel: "Forderungen",
     roles: ["admin"],
+    items: [
+      { href: "/forderungen/mahnung", label: "Mahnungen", icon: Bell, roles: ["admin"] },
+      { href: "/forderungen/inkasso", label: "Inkasso", icon: Gavel, roles: ["admin"] },
+      { href: "/forderungen/ueberfaellig", label: "Überfällig", icon: Clock, roles: ["admin"] },
+    ],
   },
+
+  // ANALYSE
   {
-    href: "/chat",
-    label: "Chat",
-    icon: MessageSquare,
+    sectionLabel: "Analyse",
+    roles: ["admin"],
+    items: [
+      { href: "/analyse/berichte", label: "Berichte", icon: BarChart2, roles: ["admin"] },
+    ],
+  },
+
+  // VERWALTUNG
+  {
+    sectionLabel: "Verwaltung",
     roles: ["admin", "closer", "sales_partner"],
-  },
-  {
-    href: "/einstellungen/benutzer",
-    label: "Benutzer",
-    icon: Users,
-    roles: ["admin"],
-  },
-  {
-    href: "/einstellungen/stammdaten",
-    label: "Stammdaten",
-    icon: Settings,
-    roles: ["admin"],
+    items: [
+      { href: "/verwaltung/stammdaten", label: "Stammdaten", icon: Settings, roles: ["admin"] },
+      { href: "/verwaltung/benutzer", label: "Benutzer", icon: Users, roles: ["admin"] },
+      { href: "/verwaltung/chat", label: "Chat", icon: MessageSquare, roles: ["admin", "closer", "sales_partner"] },
+    ],
   },
 ];
+
+// ─── NavLink-Komponente ───────────────────────────────────────────────────────
 
 function NavLink({
   href,
@@ -126,77 +161,34 @@ function NavLink({
   );
 }
 
-function NavChildLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+// ─── Section-Label-Komponente ─────────────────────────────────────────────────
+
+function NavSectionLabel({ label }: { label: string }) {
   return (
-    <Link
-      href={href}
-      className={cn(
-        "flex items-center rounded-md px-3 py-1.5 text-sm transition-colors",
-        active
-          ? "bg-accent text-accent-foreground font-medium"
-          : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-      )}
-    >
+    <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 select-none">
       {label}
-    </Link>
+    </p>
   );
 }
 
-function NavGroup({
-  label,
-  icon: Icon,
-  children,
-  groupActive,
-  pathname,
-}: {
-  label: string;
-  icon: React.ElementType;
-  children: ChildItem[];
-  groupActive: boolean;
-  pathname: string;
-}) {
-  const [open, setOpen] = useState(groupActive);
-
-  return (
-    <div className="space-y-0.5">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-          groupActive
-            ? "text-accent-foreground hover:bg-accent/50"
-            : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-        )}
-      >
-        <Icon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 truncate text-left">{label}</span>
-        <ChevronRight
-          className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-90")}
-        />
-      </button>
-      {open && (
-        <div className="ml-7 space-y-0.5 border-l border-border pl-3">
-          {children.map((child) => (
-            <NavChildLink
-              key={child.href}
-              href={child.href}
-              label={child.label}
-              active={pathname === child.href || pathname.startsWith(child.href + "/")}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// ─── Sidebar-Breite ───────────────────────────────────────────────────────────
 
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 224;
 const STORAGE_KEY = "sidebar-width";
 
-export function Sidebar({ orgName, fullName, email, role, currentUserId, organizationId, initialMembers }: SidebarProps) {
+// ─── Haupt-Komponente ─────────────────────────────────────────────────────────
+
+export function Sidebar({
+  orgName,
+  fullName,
+  email,
+  role,
+  currentUserId,
+  organizationId,
+  initialMembers,
+}: SidebarProps) {
   const pathname = usePathname();
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const isResizing = useRef(false);
@@ -208,71 +200,102 @@ export function Sidebar({ orgName, fullName, email, role, currentUserId, organiz
     if (saved) setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parseInt(saved, 10))));
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    startX.current = e.clientX;
-    startWidth.current = width;
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isResizing.current = true;
+      startX.current = e.clientX;
+      startWidth.current = width;
 
-    const onMove = (ev: MouseEvent) => {
-      if (!isResizing.current) return;
-      const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + ev.clientX - startX.current));
-      setWidth(next);
-    };
+      const onMove = (ev: MouseEvent) => {
+        if (!isResizing.current) return;
+        const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + ev.clientX - startX.current));
+        setWidth(next);
+      };
 
-    const onUp = () => {
-      isResizing.current = false;
-      setWidth((prev) => { localStorage.setItem(STORAGE_KEY, String(prev)); return prev; });
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
+      const onUp = () => {
+        isResizing.current = false;
+        setWidth((prev) => {
+          localStorage.setItem(STORAGE_KEY, String(prev));
+          return prev;
+        });
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
 
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  }, [width]);
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [width],
+  );
 
-  const visible = navItems.filter((item) => item.roles.includes(role));
+  function isActive(href: string) {
+    return pathname === href || pathname.startsWith(href + "/");
+  }
+
+  // Rendert einen einzelnen Entry (Section oder standalone Item)
+  function renderEntry(entry: SidebarEntry, idx: number) {
+    if (isNavSection(entry)) {
+      // Items filtern die der User-Rolle entsprechen
+      const visibleItems = entry.items.filter((item) => item.roles.includes(role));
+      // Section komplett verstecken wenn keine Items sichtbar
+      if (visibleItems.length === 0) return null;
+
+      return (
+        <div key={idx}>
+          <NavSectionLabel label={entry.sectionLabel} />
+          <div className="space-y-0.5">
+            {visibleItems.map((item) => (
+              <NavLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                active={isActive(item.href)}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Standalone Item (z.B. Dashboard)
+    if (!entry.roles.includes(role)) return null;
+    return (
+      <NavLink
+        key={entry.href}
+        href={entry.href}
+        label={entry.label}
+        icon={entry.icon}
+        active={isActive(entry.href)}
+      />
+    );
+  }
 
   return (
     <aside
       style={{ width }}
       className="relative flex h-full shrink-0 flex-col border-r border-border bg-card"
     >
-      {/* Drag handle */}
+      {/* Drag-Handle */}
       <div
         onMouseDown={handleMouseDown}
         className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-primary/30 active:bg-primary/50"
       />
+
+      {/* Org-Header */}
       <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
         <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="truncate text-sm font-semibold">{orgName}</span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {visible.map((item) =>
-          item.children ? (
-            <NavGroup
-              key={item.href}
-              label={item.label}
-              icon={item.icon}
-              children={item.children}
-              groupActive={pathname.startsWith(item.href)}
-              pathname={pathname}
-            />
-          ) : (
-            <NavLink
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              active={pathname === item.href || pathname.startsWith(item.href + "/")}
-            />
-          ),
-        )}
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto p-2">
+        {sidebarEntries.map((entry, idx) => renderEntry(entry, idx))}
       </nav>
 
       {/* Team-Mitglieder mit Online-Status */}
@@ -282,14 +305,11 @@ export function Sidebar({ orgName, fullName, email, role, currentUserId, organiz
         organizationId={organizationId}
       />
 
+      {/* Benutzer-Footer */}
       <div className="border-t border-border p-2">
         <div className="mb-1 px-3 py-1.5">
-          <p className="truncate text-xs font-medium">
-            {fullName ?? email}
-          </p>
-          {fullName && (
-            <p className="truncate text-xs text-muted-foreground">{email}</p>
-          )}
+          <p className="truncate text-xs font-medium">{fullName ?? email}</p>
+          {fullName && <p className="truncate text-xs text-muted-foreground">{email}</p>}
         </div>
         <form action={signOut}>
           <button
