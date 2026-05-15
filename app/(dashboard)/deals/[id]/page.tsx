@@ -196,15 +196,25 @@ export default async function DealDetailPage({
         {d.notes && <Row label="Notizen" value={d.notes} />}
       </div>
 
-      {/* One-time payment status */}
-      {d.payment_type === "one_time" && oneTime && (
+      {/* Zahlung / Anzahlung status — für Einmalzahlung und Ratenzahlung mit Anzahlung */}
+      {!isSubscription && oneTime && (
         <div className="rounded-lg border border-border p-4 space-y-3">
-          <h2 className="text-sm font-semibold">Zahlung</h2>
+          <h2 className="text-sm font-semibold">
+            {d.payment_type === "one_time" ? "Zahlung" : "Anzahlung"}
+          </h2>
           {oneTime.due_date && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Fällig am</span>
               <span className="text-sm tabular-nums">
                 {format(new Date(oneTime.due_date), "dd. MMMM yyyy", { locale: de })}
+              </span>
+            </div>
+          )}
+          {d.payment_type === "installments" && d.down_payment != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Betrag</span>
+              <span className="text-sm tabular-nums font-medium text-emerald-400">
+                {new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(d.down_payment)}
               </span>
             </div>
           )}

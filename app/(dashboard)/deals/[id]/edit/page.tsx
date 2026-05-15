@@ -37,7 +37,7 @@ export default async function DealEditPage({
         .order("name"),
       supabase
         .from("products")
-        .select("id, name, product_type")
+        .select("id, name, product_type, registration_fee_options, default_recurring_price")
         .eq("organization_id", session.organizationId)
         .eq("active", true)
         .order("name"),
@@ -82,7 +82,7 @@ export default async function DealEditPage({
           platform_id: deal.platform_id,
           payment_method: deal.payment_method,
           total_price: deal.total_price,
-          payment_type: deal.payment_type as "one_time" | "installments",
+          payment_type: deal.payment_type as "one_time" | "installments" | "subscription_monthly" | "subscription_yearly",
           close_date: deal.close_date,
           onboarding_done: deal.onboarding_done,
           update_call_done: deal.update_call_done,
@@ -93,6 +93,8 @@ export default async function DealEditPage({
           closer_id: deal.closer_id,
           down_payment: deal.down_payment ?? null,
           one_time_due_date: oneTime?.due_date ?? null,
+          recurring_amount: (deal as { recurring_amount?: number | null }).recurring_amount ?? null,
+          subscription_start_date: (deal as { subscription_start_date?: string | null }).subscription_start_date ?? null,
         }}
       />
 

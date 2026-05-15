@@ -228,6 +228,15 @@ export async function createDeal(
       first_due_date,
     );
     await supabase.from("installments").insert(rows);
+
+    // Anzahlung als one_time_payment tracken (damit sie auf der Detail-Seite abgehakt werden kann)
+    if ((down_payment ?? 0) > 0) {
+      await supabase.from("one_time_payments").insert({
+        deal_id: deal.id,
+        organization_id: session.organizationId,
+        due_date: first_due_date,
+      });
+    }
   }
 
   revalidatePath("/deals");
@@ -252,18 +261,29 @@ export async function updateDeal(
   }
 
   const {
-    number_of_rates: _nr,
-    first_due_date: _fd,
+    number_of_rates,
+    first_due_date,
     one_time_due_date,
     down_payment,
+    recurring_amount,
+    subscription_start_date,
     ...dealFields
   } = result.data;
+
+  const isSubscription =
+    dealFields.payment_type === "subscription_monthly" ||
+    dealFields.payment_type === "subscription_yearly";
 
   const supabase = await createClient();
 
   const { error } = await supabase
     .from("deals")
-    .update({ ...dealFields, down_payment })
+    .update({
+      ...dealFields,
+      down_payment,
+      recurring_amount: isSubscription ? recurring_amount : null,
+      subscription_start_date: isSubscription ? subscription_start_date : null,
+    })
     .eq("id", id)
     .eq("organization_id", session.organizationId);
 
@@ -276,6 +296,44 @@ export async function updateDeal(
       .update({ due_date: one_time_due_date ?? null })
       .eq("deal_id", id)
       .eq("organization_id", session.organizationId);
+  }
+
+  // Raten neu generieren wenn angegeben
+  if (dealFields.payment_type === "installments" && number_of_rates && first_due_date) {
+    // Bestehende Raten löschen
+    await supabase
+      .from("installments")
+      .delete()
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId);
+
+    const installmentTotal = dealFields.total_price - (down_payment ?? 0);
+    const rows = generateInstallments(
+      id,
+      session.organizationId,
+      installmentTotal,
+      number_of_rates,
+      first_due_date,
+    );
+    await supabase.from("installments").insert(rows);
+
+    // Anzahlung-Tracking: one_time_payment upserten wenn Anzahlung vorhanden
+    if ((down_payment ?? 0) > 0) {
+      const { data: existing } = await supabase
+        .from("one_time_payments")
+        .select("id")
+        .eq("deal_id", id)
+        .eq("organization_id", session.organizationId)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from("one_time_payments").insert({
+          deal_id: id,
+          organization_id: session.organizationId,
+          due_date: first_due_date,
+        });
+      }
+    }
   }
 
   revalidatePath("/deals");

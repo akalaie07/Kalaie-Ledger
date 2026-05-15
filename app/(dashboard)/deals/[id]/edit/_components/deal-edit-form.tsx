@@ -23,7 +23,7 @@ interface DealEditFormProps {
     platform_id: string | null;
     payment_method: string | null;
     total_price: number;
-    payment_type: "one_time" | "installments";
+    payment_type: "one_time" | "installments" | "subscription_monthly" | "subscription_yearly";
     close_date: string;
     onboarding_done: boolean;
     update_call_done: boolean;
@@ -34,6 +34,8 @@ interface DealEditFormProps {
     closer_id: string | null;
     down_payment: number | null;
     one_time_due_date: string | null;
+    recurring_amount: number | null;
+    subscription_start_date: string | null;
   };
 }
 
@@ -95,12 +97,14 @@ export function DealEditForm({
   const [selectedProductType, setSelectedProductType] = useState<ProductOption["product_type"]>(
     initialProduct?.product_type ?? "standard",
   );
-  const [paymentType, setPaymentType] = useState<"one_time" | "installments">(initial.payment_type);
+  const [paymentType, setPaymentType] = useState<"one_time" | "installments" | "subscription_monthly" | "subscription_yearly">(initial.payment_type);
   const [hasAnzahlung, setHasAnzahlung] = useState(initial.down_payment != null);
   const [totalPrice, setTotalPrice] = useState(initial.total_price);
   const [downPayment, setDownPayment] = useState(initial.down_payment ?? 0);
   const [numberOfRates, setNumberOfRates] = useState(0);
   const [closeDate, setCloseDate] = useState<string>(initial.close_date);
+  const [recurringAmount, setRecurringAmount] = useState<number>(initial.recurring_amount ?? 0);
+  const [subscriptionStart, setSubscriptionStart] = useState<string>(initial.subscription_start_date ?? "");
 
   // Letztes eingegebenes Datum aus localStorage laden (pro Deal-ID)
   useEffect(() => {
@@ -114,24 +118,25 @@ export function DealEditForm({
     if (val) localStorage.setItem(`kalaie_edit_close_date_${dealId}`, val);
   }
 
-  const isSubscription = selectedProductType === "subscription_monthly" || selectedProductType === "subscription_yearly";
+  const isSubscription = paymentType === "subscription_monthly" || paymentType === "subscription_yearly";
 
   function handleProductChange(productId: string) {
     setSelectedProductId(productId);
     const product = products.find((p) => p.id === productId);
     const type = product?.product_type ?? "standard";
     setSelectedProductType(type);
-    if (type === "subscription_monthly" || type === "subscription_yearly") {
-      setPaymentType("installments");
+    if (type === "subscription_monthly") {
+      setPaymentType("subscription_monthly");
+      if (product?.default_recurring_price) setRecurringAmount(product.default_recurring_price);
+    } else if (type === "subscription_yearly") {
+      setPaymentType("subscription_yearly");
+      if (product?.default_recurring_price) setRecurringAmount(product.default_recurring_price);
+    } else if (paymentType === "subscription_monthly" || paymentType === "subscription_yearly") {
+      setPaymentType("one_time");
     }
   }
 
-  const ratenLabel =
-    selectedProductType === "subscription_monthly"
-      ? "Laufzeit (Monate)"
-      : selectedProductType === "subscription_yearly"
-      ? "Laufzeit (Jahre)"
-      : "Anzahl Raten";
+  const ratenLabel = "Anzahl Raten";
 
   function fmtPreview(v: number) {
     return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
@@ -250,9 +255,12 @@ export function DealEditForm({
           <div className="space-y-1.5">
             <Label htmlFor="payment_type">Zahlungsart <span className="text-destructive">*</span></Label>
             {isSubscription ? (
-              <div className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm text-violet-300">
-                Abo — Ratenzahlung wird automatisch verwendet
-              </div>
+              <>
+                <div className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm text-violet-300">
+                  {paymentType === "subscription_monthly" ? "Abo — Monatlich" : "Abo — Jährlich"}
+                </div>
+                <input type="hidden" name="payment_type" value={paymentType} />
+              </>
             ) : (
               <select
                 id="payment_type"
@@ -264,9 +272,6 @@ export function DealEditForm({
                 <option value="one_time">Einmalzahlung</option>
                 <option value="installments">Ratenzahlung</option>
               </select>
-            )}
-            {isSubscription && (
-              <input type="hidden" name="payment_type" value="installments" />
             )}
           </div>
         </div>
@@ -303,6 +308,42 @@ export function DealEditForm({
           )}
         </div>
 
+        {/* Abo-Konfiguration */}
+        {isSubscription && (
+          <div className="space-y-4 rounded-lg border border-violet-500/30 bg-violet-500/5 p-4">
+            <p className="text-xs font-medium text-violet-400 uppercase tracking-wide">Abo-Konfiguration</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="recurring_amount">
+                  {paymentType === "subscription_monthly" ? "Monatlicher Betrag (€)" : "Jährlicher Betrag (€)"}
+                </Label>
+                <Input
+                  id="recurring_amount"
+                  name="recurring_amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={recurringAmount || ""}
+                  onChange={(e) => setRecurringAmount(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="subscription_start_date">Abo-Start</Label>
+                <Input
+                  id="subscription_start_date"
+                  name="subscription_start_date"
+                  type="date"
+                  value={subscriptionStart}
+                  onChange={(e) => setSubscriptionStart(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Gesamtpreis (oben) = Anmeldegebühr. Abo-Betrag wird separat nachverfolgt.
+            </p>
+          </div>
+        )}
+
         {/* Fälligkeitsdatum Einmalzahlung */}
         {paymentType === "one_time" && (
           <div className="space-y-1.5">
@@ -318,7 +359,7 @@ export function DealEditForm({
           </div>
         )}
 
-        {/* Raten-Felder */}
+        {/* Raten-Felder — nur für echte Ratenzahlung, nicht Abo */}
         {paymentType === "installments" && (
           <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
             <div className="grid gap-4 sm:grid-cols-2">

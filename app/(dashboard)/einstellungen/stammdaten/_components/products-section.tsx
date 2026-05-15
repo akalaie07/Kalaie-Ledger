@@ -65,6 +65,11 @@ function ProductForm({
     null,
   );
   const [productType, setProductType] = useState<ProductType>(defaultProductType);
+  // Controlled inputs so they survive React 19 form reset after server action error
+  const [name, setName] = useState(defaultName);
+  const [price, setPrice] = useState(defaultPrice);
+  const [recurringPrice, setRecurringPrice] = useState(defaultRecurringPrice);
+  const [regFeeOptions, setRegFeeOptions] = useState(defaultRegistrationFeeOptions.join(", "));
   const isSubscription = productType === "subscription_monthly" || productType === "subscription_yearly";
 
   useEffect(() => {
@@ -82,7 +87,8 @@ function ProductForm({
           <Input
             id={`pr-name-${itemId ?? "new"}`}
             name="name"
-            defaultValue={defaultName}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             autoFocus
             aria-invalid={!!state?.fieldErrors?.name}
           />
@@ -96,7 +102,8 @@ function ProductForm({
             type="number"
             min="0"
             step="0.01"
-            defaultValue={defaultPrice}
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
             placeholder="optional"
             aria-invalid={!!state?.fieldErrors?.default_price}
           />
@@ -135,7 +142,8 @@ function ProductForm({
                 type="number"
                 min="0"
                 step="0.01"
-                defaultValue={defaultRecurringPrice}
+                value={recurringPrice}
+                onChange={(e) => setRecurringPrice(e.target.value)}
                 placeholder="z.B. 30"
               />
             </div>
@@ -146,7 +154,8 @@ function ProductForm({
               <Input
                 id={`pr-regfees-${itemId ?? "new"}`}
                 name="registration_fee_options_raw"
-                defaultValue={defaultRegistrationFeeOptions.join(", ")}
+                value={regFeeOptions}
+                onChange={(e) => setRegFeeOptions(e.target.value)}
                 placeholder="z.B. 129, 1"
               />
               <p className="text-xs text-muted-foreground">Komma-getrennte Preise</p>
