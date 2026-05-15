@@ -28,7 +28,6 @@ const DealSchema = z.object({
   payment_method: z.string().trim().optional().transform((v) => v || null),
   product_id: uuidOpt,
   order_id: z.string().trim().optional().transform((v) => v || null),
-  sales_partner_id: uuidOpt,
   closer_id: uuidOpt,
   total_price: z.coerce.number().min(0, "Muss ≥ 0 sein."),
   payment_type: z.enum(["one_time", "installments"]),
@@ -45,7 +44,6 @@ const DealSchema = z.object({
     z.number().nonnegative("Muss ≥ 0 sein.").nullable(),
   ),
   one_time_due_date: optDate,
-  new_sales_partner_name: z.string().trim().optional().transform((v) => v || null),
 });
 
 function generateInstallments(
@@ -101,7 +99,6 @@ export async function createDealFromImport(
     number_of_rates,
     first_due_date,
     one_time_due_date,
-    new_sales_partner_name,
     down_payment,
     ...dealFields
   } = result.data;
@@ -112,21 +109,10 @@ export async function createDealFromImport(
 
   const supabase = await createClient();
 
-  let salesPartnerId = dealFields.sales_partner_id;
-  if (new_sales_partner_name) {
-    const { data: newPartner } = await supabase
-      .from("sales_partners")
-      .insert({ organization_id: session.organizationId, name: new_sales_partner_name, commission_rate: 0 })
-      .select("id")
-      .single();
-    if (newPartner) salesPartnerId = newPartner.id;
-  }
-
   const { data: deal, error } = await supabase
     .from("deals")
     .insert({
       ...dealFields,
-      sales_partner_id: salesPartnerId,
       down_payment,
       organization_id: session.organizationId,
       created_by: session.userId,

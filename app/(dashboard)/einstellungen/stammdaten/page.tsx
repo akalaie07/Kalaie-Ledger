@@ -12,9 +12,6 @@ import {
   createCloser,
   updateCloser,
   toggleCloser,
-  createSalesPartner,
-  updateSalesPartner,
-  toggleSalesPartner,
 } from "@/lib/actions/stammdaten";
 
 import { PlatformsSection, type Platform } from "./_components/platforms-section";
@@ -29,7 +26,7 @@ export default async function StammdatenPage() {
 
   const supabase = await createClient();
 
-  const [platforms, products, closers, salesPartners, profiles] =
+  const [platforms, products, closers, profiles] =
     await Promise.all([
       supabase
         .from("platforms")
@@ -43,11 +40,6 @@ export default async function StammdatenPage() {
         .order("name"),
       supabase
         .from("closers")
-        .select("id, name, commission_rate, active, profile_id")
-        .eq("organization_id", orgId)
-        .order("name"),
-      supabase
-        .from("sales_partners")
         .select("id, name, commission_rate, active, profile_id")
         .eq("organization_id", orgId)
         .order("name"),
@@ -88,15 +80,6 @@ export default async function StammdatenPage() {
         createAction={createCloser}
         updateAction={updateCloser}
         toggleAction={toggleCloser}
-      />
-
-      <StaffSection
-        title="Vertriebspartner"
-        items={(salesPartners.data ?? []) as StaffItem[]}
-        profiles={(profiles.data ?? []) as ProfileOpt[]}
-        createAction={createSalesPartner}
-        updateAction={updateSalesPartner}
-        toggleAction={toggleSalesPartner}
       />
     </div>
   );

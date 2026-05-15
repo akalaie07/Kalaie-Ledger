@@ -105,7 +105,6 @@ type DealPdf = {
     products: { name: string } | { name: string }[] | null;
     platforms: { name: string } | { name: string }[] | null;
     closers: { name: string } | { name: string }[] | null;
-    sales_partners: { name: string } | { name: string }[] | null;
   };
   installments: { sequence: number; due_date: string; amount: number; paid: boolean }[];
   oneTime: { paid: boolean; paid_at: string | null } | null;
@@ -173,12 +172,6 @@ function DealDocument({ data }: { data: DealPdf }) {
           { style: styles.row },
           React.createElement(Text, { style: styles.rowLabel }, "Closer"),
           React.createElement(Text, { style: styles.rowValue }, resolveName(deal.closers)),
-        ),
-        React.createElement(
-          View,
-          { style: styles.row },
-          React.createElement(Text, { style: styles.rowLabel }, "Vertriebspartner"),
-          React.createElement(Text, { style: styles.rowValue }, resolveName(deal.sales_partners)),
         ),
         React.createElement(
           View,
@@ -314,7 +307,7 @@ export async function GET(
   const [{ data: deal }, { data: installments }, { data: oneTime }] = await Promise.all([
     supabase
       .from("deals")
-      .select("*, platforms(name), products(name), closers(name), sales_partners(name)")
+      .select("*, platforms(name), products(name), closers(name)")
       .eq("id", id)
       .eq("organization_id", session.organizationId)
       .single(),

@@ -173,7 +173,8 @@ export async function resolveConflictAssign(
     .eq("id", conflictId)
     .eq("organization_id", organizationId);
 
-  revalidatePath("/import/zahlungsabgleich");
+  revalidatePath("/import/konflikte");
+  revalidatePath("/import");
   revalidatePath("/deals");
   return { error: null };
 }
@@ -266,7 +267,8 @@ export async function resolveConflictCreateDeal(
     .eq("id", conflictId)
     .eq("organization_id", organizationId);
 
-  revalidatePath("/import/zahlungsabgleich");
+  revalidatePath("/import/konflikte");
+  revalidatePath("/import");
   revalidatePath("/deals");
   return { error: null };
 }
@@ -295,6 +297,29 @@ export async function resolveConflictSkip(
 
   if (error) return { error: error.message };
 
-  revalidatePath("/import/zahlungsabgleich");
+  revalidatePath("/import/konflikte");
+  revalidatePath("/import");
   return { error: null };
+}
+
+// =============================================================================
+// searchDealsForAssignment — Deals für Konflikt-Zuordnung suchen
+// =============================================================================
+
+export async function searchDealsForAssignment(
+  query: string,
+): Promise<Array<{ id: string; customer_name: string; order_id: string | null; total_price: number }>> {
+  if (!query || query.trim().length < 2) return [];
+  const session = await requireRole("admin");
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("deals")
+    .select("id, customer_name, order_id, total_price")
+    .eq("organization_id", session.organizationId)
+    .ilike("customer_name", `%${query.trim()}%`)
+    .order("customer_name")
+    .limit(10);
+
+  return data ?? [];
 }

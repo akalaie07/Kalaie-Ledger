@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 
 const TEMPLATE_HEADERS = [
   "Kunde", "Bestell-ID", "Plattform", "Produkt", "Zahlart",
-  "Closer", "Vertriebspartner", "Gesamtpreis", "Zahlungsart",
+  "Closer", "Gesamtpreis", "Zahlungsart",
   "Abschlussdatum", "Anzahl Raten", "Erstes Fälligkeitsdatum",
   "Bezahlt", "Onboarding", "Update-Call", "Inkasso", "Notizen",
 ];
@@ -35,8 +35,8 @@ const TEMPLATE_HEADERS = [
 function downloadTemplate() {
   const rows = [
     TEMPLATE_HEADERS.join(";"),
-    "Max Mustermann;ORD-001;Copecart;Kurs A;Überweisung;Hans Closer;Partner GmbH;1200;Ratenzahlung;01.01.2026;3;01.02.2026;2;ja;nein;nein;",
-    "Anna Schmidt;;Digistore;Kurs B;;Lisa Closer;;500;Einmalzahlung;15.01.2026;;;;ja;;nein;Wichtiger Kunde",
+    "Max Mustermann;ORD-001;Copecart;Kurs A;Überweisung;Hans Closer;1200;Ratenzahlung;01.01.2026;3;01.02.2026;2;ja;nein;nein;",
+    "Anna Schmidt;;Digistore;Kurs B;;Lisa Closer;500;Einmalzahlung;15.01.2026;;;;ja;;nein;Wichtiger Kunde",
   ].join("\n");
   const blob = new Blob(["﻿" + rows], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -170,7 +170,6 @@ function mapStandardRow(raw: Record<string, string>): ImportRow {
     product_name: get(["produkt", "product"]),
     payment_method: get(["zahlart", "payment_method", "zahlungsmethode"]),
     closer_name: get(["closer"]),
-    sales_partner_name: get(["vertriebspartner", "sales_partner", "partner"]),
     total_price: get(["gesamtpreis", "preis", "total_price", "price", "betrag"]),
     payment_type: get(["zahlungsart", "payment_type"]),
     close_date: get(["abschlussdatum", "close_date", "datum", "date"]),

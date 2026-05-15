@@ -210,7 +210,6 @@ function ManualDealForm({
 
   const [paymentType, setPaymentType] = useState<"one_time" | "installments">(defaultPaymentType);
   const [hasAnzahlung, setHasAnzahlung] = useState(false);
-  const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
   const [totalPrice, setTotalPrice] = useState(n.amount || 0);
   const [downPayment, setDownPayment] = useState(0);
   const [numberOfRates, setNumberOfRates] = useState(0);
@@ -555,38 +554,6 @@ function ManualDealForm({
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor={salesPartnerMode === "select" ? `sp-${item.syntheticKey}` : `spn-${item.syntheticKey}`}>
-                    Vertriebspartner
-                  </Label>
-                  <button
-                    type="button"
-                    onClick={() => setSalesPartnerMode(salesPartnerMode === "select" ? "new" : "select")}
-                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                  >
-                    {salesPartnerMode === "select" ? "+ Neu anlegen" : "Aus Liste wählen"}
-                  </button>
-                </div>
-                {salesPartnerMode === "select" ? (
-                  <select
-                    id={`sp-${item.syntheticKey}`}
-                    name="sales_partner_id"
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    <option value="">— keine —</option>
-                    {formOptions.salesPartners.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <Input
-                    id={`spn-${item.syntheticKey}`}
-                    name="new_sales_partner_name"
-                    placeholder="Name des Vertriebspartners"
-                  />
-                )}
               </div>
             </div>
           </section>

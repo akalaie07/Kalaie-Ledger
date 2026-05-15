@@ -57,11 +57,11 @@ export default async function BerichtePage({
   const rangeFrom = periods[0].from;
   const rangeTo = periods[periods.length - 1].to;
 
-  const [{ data: dealsAll }, { data: balancesAll }, { data: closersAll }, { data: partnersAll }] =
+  const [{ data: dealsAll }, { data: balancesAll }, { data: closersAll }] =
     await Promise.all([
       supabase
         .from("deals")
-        .select("id, total_price, close_date, closer_id, sales_partner_id")
+        .select("id, total_price, close_date, closer_id")
         .eq("organization_id", session.organizationId)
         .gte("close_date", rangeFrom)
         .lte("close_date", rangeTo),
@@ -73,16 +73,11 @@ export default async function BerichtePage({
         .from("closers")
         .select("id, name, commission_rate")
         .eq("organization_id", session.organizationId),
-      supabase
-        .from("sales_partners")
-        .select("id, name, commission_rate")
-        .eq("organization_id", session.organizationId),
     ]);
 
   const deals = dealsAll ?? [];
   const balanceMap = new Map((balancesAll ?? []).map((b) => [b.deal_id, b]));
   const closerById = new Map((closersAll ?? []).map((c) => [c.id, c]));
-  const partnerById = new Map((partnersAll ?? []).map((p) => [p.id, p]));
 
   let totalSoll = 0;
   let totalIst = 0;
@@ -131,26 +126,6 @@ export default async function BerichtePage({
     });
   }
   const closers = Array.from(closerRevMap.values()).sort((a, b) => b.sollRevenue - a.sollRevenue);
-
-  const partnerRevMap = new Map<string, StaffEntry>();
-  for (const d of deals) {
-    if (!d.sales_partner_id) continue;
-    const p = partnerById.get(d.sales_partner_id);
-    if (!p) continue;
-    const soll = Number(d.total_price) || 0;
-    const ist = Number(balanceMap.get(d.id)?.paid_sum ?? 0);
-    const rate = Number(p.commission_rate) || 0;
-    const prev = partnerRevMap.get(d.sales_partner_id) ?? { name: p.name, sollRevenue: 0, istRevenue: 0, sollCommission: 0, istCommission: 0, rate };
-    partnerRevMap.set(d.sales_partner_id, {
-      name: p.name,
-      sollRevenue: prev.sollRevenue + soll,
-      istRevenue: prev.istRevenue + ist,
-      sollCommission: prev.sollCommission + soll * rate,
-      istCommission: prev.istCommission + ist * rate,
-      rate,
-    });
-  }
-  const partners = Array.from(partnerRevMap.values()).sort((a, b) => b.sollRevenue - a.sollRevenue);
 
   const istPct = totalSoll > 0 ? Math.round((totalIst / totalSoll) * 100) : 0;
 
@@ -256,38 +231,6 @@ export default async function BerichtePage({
                     <td className="px-4 py-2.5 text-right text-muted-foreground">{(c.rate * 100).toFixed(0)} %</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(c.sollCommission)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(c.istCommission)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {partners.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold">Vertriebspartner — Provisionen</h2>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border bg-muted/40">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Partner</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Soll-Umsatz</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Ist-Umsatz</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Prov. %</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Soll-Provision</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Ist-Provision</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {partners.map((p) => (
-                  <tr key={p.name} className="hover:bg-muted/20">
-                    <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(p.sollRevenue)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{fmt(p.istRevenue)}</td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground">{(p.rate * 100).toFixed(0)} %</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(p.sollCommission)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-emerald-400">{fmt(p.istCommission)}</td>
                   </tr>
                 ))}
               </tbody>
