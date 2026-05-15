@@ -13,7 +13,7 @@ export default async function NewDealPage() {
   const supabase = await createClient();
   const orgId = session.organizationId;
 
-  const [platforms, products, closers, salesPartners] = await Promise.all([
+  const [platforms, products, closers] = await Promise.all([
     supabase
       .from("platforms")
       .select("id, name")
@@ -28,12 +28,6 @@ export default async function NewDealPage() {
       .order("name"),
     supabase
       .from("closers")
-      .select("id, name")
-      .eq("organization_id", orgId)
-      .eq("active", true)
-      .order("name"),
-    supabase
-      .from("sales_partners")
       .select("id, name")
       .eq("organization_id", orgId)
       .eq("active", true)
@@ -57,9 +51,6 @@ export default async function NewDealPage() {
         platforms={(platforms.data ?? []) as { id: string; name: string }[]}
         products={(products.data ?? []) as unknown as ProductOption[]}
         closers={(closers.data ?? []) as { id: string; name: string }[]}
-        salesPartners={
-          (salesPartners.data ?? []) as { id: string; name: string }[]
-        }
       />
     </div>
   );
