@@ -126,6 +126,18 @@ const ProductSchema = z.object({
     z.number().nonnegative("Preis muss ≥ 0 sein.").nullable(),
   ),
   product_type: z.enum(PRODUCT_TYPES).default("standard"),
+  default_recurring_price: z.preprocess(
+    (v) => (v === "" || v == null ? null : Number(v)),
+    z.number().nonnegative("Preis muss ≥ 0 sein.").nullable(),
+  ),
+  // Komma-separierte Liste von Zahlen, z. B. "129,1"
+  registration_fee_options_raw: z.string().optional().transform((v) => {
+    if (!v) return [] as number[];
+    return v
+      .split(",")
+      .map((s) => parseFloat(s.trim()))
+      .filter((n) => !isNaN(n) && n >= 0);
+  }),
 });
 
 export async function createProduct(
@@ -139,12 +151,19 @@ export async function createProduct(
     name: fd.get("name"),
     default_price: fd.get("default_price"),
     product_type: fd.get("product_type") || "standard",
+    default_recurring_price: fd.get("default_recurring_price"),
+    registration_fee_options_raw: fd.get("registration_fee_options_raw"),
   });
   if (!r.success) return { ok: false, fieldErrors: r.error.flatten().fieldErrors };
 
+  const { registration_fee_options_raw, ...fields } = r.data;
   const { error } = await ctx.supabase
     .from("products")
-    .insert({ organization_id: ctx.orgId, ...r.data });
+    .insert({
+      organization_id: ctx.orgId,
+      ...fields,
+      registration_fee_options: registration_fee_options_raw,
+    });
 
   if (error) return dupErr(error.code, error.message);
   revalidatePath(PATH);
@@ -163,12 +182,15 @@ export async function updateProduct(
     name: fd.get("name"),
     default_price: fd.get("default_price"),
     product_type: fd.get("product_type") || "standard",
+    default_recurring_price: fd.get("default_recurring_price"),
+    registration_fee_options_raw: fd.get("registration_fee_options_raw"),
   });
   if (!r.success) return { ok: false, fieldErrors: r.error.flatten().fieldErrors };
 
+  const { registration_fee_options_raw, ...fields } = r.data;
   const { error } = await ctx.supabase
     .from("products")
-    .update(r.data)
+    .update({ ...fields, registration_fee_options: registration_fee_options_raw })
     .eq("id", id)
     .eq("organization_id", ctx.orgId);
 

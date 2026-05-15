@@ -212,6 +212,8 @@ export type Database = {
           created_at: string;
           updated_at: string;
           product_type: "standard" | "subscription_monthly" | "subscription_yearly";
+          registration_fee_options: number[];
+          default_recurring_price: number | null;
         };
         Insert: {
           id?: string;
@@ -222,6 +224,8 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           product_type?: "standard" | "subscription_monthly" | "subscription_yearly";
+          registration_fee_options?: number[];
+          default_recurring_price?: number | null;
         };
         Update: {
           id?: string;
@@ -232,6 +236,8 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           product_type?: "standard" | "subscription_monthly" | "subscription_yearly";
+          registration_fee_options?: number[];
+          default_recurring_price?: number | null;
         };
         Relationships: [
           {
@@ -360,6 +366,8 @@ export type Database = {
           update_call_done: boolean;
           notes: string | null;
           down_payment: number | null;
+          recurring_amount: number | null;
+          subscription_start_date: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -384,6 +392,8 @@ export type Database = {
           update_call_done?: boolean;
           notes?: string | null;
           down_payment?: number | null;
+          recurring_amount?: number | null;
+          subscription_start_date?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -408,6 +418,8 @@ export type Database = {
           update_call_done?: boolean;
           notes?: string | null;
           down_payment?: number | null;
+          recurring_amount?: number | null;
+          subscription_start_date?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -475,6 +487,45 @@ export type Database = {
           organization_id: string;
           deal_id: string;
           sequence: number;
+          due_date: string;
+          amount: number;
+          paid?: boolean;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          deal_id?: string;
+          sequence?: number;
+          due_date?: string;
+          amount?: number;
+          paid?: boolean;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      subscription_payments: {
+        Row: {
+          id: string;
+          organization_id: string;
+          deal_id: string;
+          sequence: number;
+          due_date: string;
+          amount: number;
+          paid: boolean;
+          paid_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          deal_id: string;
+          sequence?: number;
           due_date: string;
           amount: number;
           paid?: boolean;
@@ -630,7 +681,7 @@ export type Database = {
     Functions: Record<string, { Args: Record<string, unknown>; Returns: unknown }>;
     Enums: {
       role_enum: "admin" | "closer" | "sales_partner";
-      payment_type_enum: "one_time" | "installments";
+      payment_type_enum: "one_time" | "installments" | "subscription_monthly" | "subscription_yearly";
       inkasso_status_enum: "sent" | "in_recovery" | "recovered" | "written_off";
     };
     CompositeTypes: Record<string, unknown>;

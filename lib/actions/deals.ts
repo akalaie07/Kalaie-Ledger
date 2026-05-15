@@ -46,7 +46,7 @@ const DealSchema = z.object({
   total_price: z.coerce
     .number()
     .min(0, "Muss ≥ 0 sein."),
-  payment_type: z.enum(["one_time", "installments"]),
+  payment_type: z.enum(["one_time", "installments", "subscription_monthly", "subscription_yearly"]),
   close_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Ungültiges Datum."),
@@ -89,6 +89,12 @@ const DealSchema = z.object({
   ),
   // Neu: Fälligkeitsdatum für Einmalzahlung
   one_time_due_date: optDate,
+  // Abo-Felder
+  recurring_amount: z.preprocess(
+    (v) => (v === "" || v == null ? null : Number(v)),
+    z.number().nonnegative().nullable(),
+  ),
+  subscription_start_date: optDate,
 });
 
 // ---------------------------------------------------------------------------
@@ -151,8 +157,14 @@ export async function createDeal(
     first_due_date,
     one_time_due_date,
     down_payment,
+    recurring_amount,
+    subscription_start_date,
     ...dealFields
   } = result.data;
+
+  const isSubscription =
+    dealFields.payment_type === "subscription_monthly" ||
+    dealFields.payment_type === "subscription_yearly";
 
   if (
     dealFields.payment_type === "installments" &&
@@ -168,6 +180,8 @@ export async function createDeal(
     .insert({
       ...dealFields,
       down_payment,
+      recurring_amount: isSubscription ? recurring_amount : null,
+      subscription_start_date: isSubscription ? subscription_start_date : null,
       organization_id: session.organizationId,
       created_by: session.userId,
     })
@@ -184,6 +198,25 @@ export async function createDeal(
       organization_id: session.organizationId,
       due_date: one_time_due_date ?? null,
     });
+  } else if (isSubscription) {
+    // Anmeldegebühr als one_time_payment tracken (falls vorhanden)
+    if ((dealFields.total_price ?? 0) > 0) {
+      await supabase.from("one_time_payments").insert({
+        deal_id: deal.id,
+        organization_id: session.organizationId,
+        due_date: subscription_start_date ?? null,
+      });
+    }
+    // Ersten Abo-Monat / -Jahr als subscription_payment anlegen (falls Start gesetzt)
+    if (subscription_start_date && recurring_amount && recurring_amount > 0) {
+      await supabase.from("subscription_payments").insert({
+        deal_id: deal.id,
+        organization_id: session.organizationId,
+        sequence: 1,
+        due_date: subscription_start_date,
+        amount: recurring_amount,
+      });
+    }
   } else if (number_of_rates && first_due_date) {
     // Raten decken den Betrag nach Anzahlung ab
     const installmentTotal = dealFields.total_price - (down_payment ?? 0);
@@ -467,6 +500,66 @@ export async function markOneTimePaid(
 
   if (error) return { error: "Status konnte nicht aktualisiert werden." };
 
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// addSubscriptionPayment — neuen Abo-Monat / -Jahr hinzufügen
+// ---------------------------------------------------------------------------
+
+export async function addSubscriptionPayment(
+  dealId: string,
+  dueDate: string,
+  amount: number,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+
+  const { count } = await supabase
+    .from("subscription_payments")
+    .select("*", { count: "exact", head: true })
+    .eq("deal_id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  const { error } = await supabase.from("subscription_payments").insert({
+    deal_id: dealId,
+    organization_id: session.organizationId,
+    sequence: (count ?? 0) + 1,
+    due_date: dueDate,
+    amount,
+  });
+
+  if (error) return { error: "Zahlung konnte nicht hinzugefügt werden." };
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// toggleSubscriptionPayment — Abo-Zahlung als bezahlt/offen markieren
+// ---------------------------------------------------------------------------
+
+export async function toggleSubscriptionPayment(
+  paymentId: string,
+  dealId: string,
+  paid: boolean,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("subscription_payments")
+    .update({
+      paid,
+      paid_at: paid ? new Date().toISOString() : null,
+    })
+    .eq("id", paymentId)
+    .eq("organization_id", session.organizationId);
+
+  if (error) return { error: "Status konnte nicht aktualisiert werden." };
   revalidatePath(`/deals/${dealId}`);
   return {};
 }

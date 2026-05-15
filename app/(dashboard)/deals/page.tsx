@@ -92,7 +92,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, chargeback, onboarding_done, update_call_done, order_id, notes, down_payment, platforms(name), products(name, product_type), closers(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, chargeback, onboarding_done, update_call_done, order_id, notes, down_payment, recurring_amount, platforms(name), products(name, product_type), closers(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -204,7 +204,7 @@ export default async function DealsPage({
       platform_name: da.platforms?.name ?? null,
       closer_name: da.closers?.name ?? null,
       total_price: d.total_price as number,
-      payment_type: d.payment_type as "one_time" | "installments",
+      payment_type: d.payment_type as "one_time" | "installments" | "subscription_monthly" | "subscription_yearly",
       close_date: d.close_date,
       down_payment: (d.down_payment as number | null) ?? null,
       notes: d.notes ?? null,
@@ -213,6 +213,7 @@ export default async function DealsPage({
       chargeback: (d.chargeback as boolean) ?? false,
       onboarding_done: d.onboarding_done ?? false,
       update_call_done: (d.update_call_done as boolean) ?? false,
+      recurring_amount: (d.recurring_amount as number | null) ?? null,
       otp_paid: d.payment_type === "one_time" ? (otpMap.get(d.id) ?? false) : null,
       inst_total: inst?.total ?? 0,
       inst_paid: inst?.paid ?? 0,

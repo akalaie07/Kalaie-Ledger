@@ -17,6 +17,8 @@ export type Product = {
   default_price: number | null;
   active: boolean;
   product_type: ProductType;
+  registration_fee_options: number[];
+  default_recurring_price: number | null;
 };
 
 const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
@@ -45,6 +47,8 @@ function ProductForm({
   defaultName = "",
   defaultPrice = "",
   defaultProductType = "standard",
+  defaultRegistrationFeeOptions = [],
+  defaultRecurringPrice = "",
   onDone,
 }: {
   action: LookupAction;
@@ -52,12 +56,16 @@ function ProductForm({
   defaultName?: string;
   defaultPrice?: string;
   defaultProductType?: ProductType;
+  defaultRegistrationFeeOptions?: number[];
+  defaultRecurringPrice?: string;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<LookupActionState, FormData>(
     action,
     null,
   );
+  const [productType, setProductType] = useState<ProductType>(defaultProductType);
+  const isSubscription = productType === "subscription_monthly" || productType === "subscription_yearly";
 
   useEffect(() => {
     if (state?.ok) onDone();
@@ -101,7 +109,8 @@ function ProductForm({
         <select
           id={`pr-type-${itemId ?? "new"}`}
           name="product_type"
-          defaultValue={defaultProductType}
+          value={productType}
+          onChange={(e) => setProductType(e.target.value as ProductType)}
           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="standard">Einmalkauf</option>
@@ -110,6 +119,41 @@ function ProductForm({
         </select>
         <FieldError errors={state?.fieldErrors?.product_type} />
       </div>
+
+      {/* Abo-spezifische Felder */}
+      {isSubscription && (
+        <div className="rounded-md border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
+          <p className="text-xs font-medium text-violet-400">Abo-Preise</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor={`pr-recurring-${itemId ?? "new"}`}>
+                {productType === "subscription_monthly" ? "Monatlicher Betrag (€)" : "Jährlicher Betrag (€)"}
+              </Label>
+              <Input
+                id={`pr-recurring-${itemId ?? "new"}`}
+                name="default_recurring_price"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={defaultRecurringPrice}
+                placeholder="z.B. 30"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor={`pr-regfees-${itemId ?? "new"}`}>
+                Anmeldegebühr-Optionen (€)
+              </Label>
+              <Input
+                id={`pr-regfees-${itemId ?? "new"}`}
+                name="registration_fee_options_raw"
+                defaultValue={defaultRegistrationFeeOptions.join(", ")}
+                placeholder="z.B. 129, 1"
+              />
+              <p className="text-xs text-muted-foreground">Komma-getrennte Preise</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
@@ -172,15 +216,28 @@ export function ProductsSection({
                 defaultName={item.name}
                 defaultPrice={item.default_price != null ? String(item.default_price) : ""}
                 defaultProductType={item.product_type}
+                defaultRegistrationFeeOptions={item.registration_fee_options ?? []}
+                defaultRecurringPrice={item.default_recurring_price != null ? String(item.default_recurring_price) : ""}
                 onDone={() => setEditingId(null)}
               />
             ) : (
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-wrap">
                   <span className="truncate text-sm font-medium">{item.name}</span>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {formatPrice(item.default_price)}
                   </span>
+                  {item.default_recurring_price != null && (
+                    <span className="text-xs text-violet-400 tabular-nums">
+                      + {formatPrice(item.default_recurring_price)}/
+                      {item.product_type === "subscription_monthly" ? "Mo." : "Jahr"}
+                    </span>
+                  )}
+                  {(item.registration_fee_options ?? []).length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      Gebühr: {item.registration_fee_options.map(formatPrice).join(" | ")}
+                    </span>
+                  )}
                   <ProductTypeBadge type={item.product_type} />
                   <StatusBadge active={item.active} />
                 </div>

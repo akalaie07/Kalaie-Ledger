@@ -11,12 +11,15 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { InstallmentToggle, OneTimeToggle } from "./_components/payment-toggle";
 import { AddInstallmentsForm } from "./_components/add-installments-form";
+import { SubscriptionTracker } from "./_components/subscription-tracker";
 
 export const metadata: Metadata = { title: "Deal — Buchhaltung" };
 
 const PAYMENT_LABEL: Record<string, string> = {
   one_time: "Einmalzahlung",
   installments: "Ratenzahlung",
+  subscription_monthly: "Abo — Monatlich",
+  subscription_yearly: "Abo — Jährlich",
 };
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -63,20 +66,34 @@ export default async function DealDetailPage({
 
   if (!deal) notFound();
 
-  const { data: installments } = await supabase
-    .from("installments")
-    .select("id, sequence, due_date, amount, paid")
-    .eq("deal_id", id)
-    .order("sequence");
+  const isSubscription =
+    deal.payment_type === "subscription_monthly" ||
+    deal.payment_type === "subscription_yearly";
 
-  const { data: oneTime } = await supabase
-    .from("one_time_payments")
-    .select("paid, paid_at, due_date")
-    .eq("deal_id", id)
-    .maybeSingle();
+  const [{ data: installments }, { data: oneTime }, { data: subscriptionPayments }] =
+    await Promise.all([
+      supabase
+        .from("installments")
+        .select("id, sequence, due_date, amount, paid")
+        .eq("deal_id", id)
+        .order("sequence"),
+      supabase
+        .from("one_time_payments")
+        .select("paid, paid_at, due_date")
+        .eq("deal_id", id)
+        .maybeSingle(),
+      isSubscription
+        ? supabase
+            .from("subscription_payments")
+            .select("id, sequence, due_date, amount, paid")
+            .eq("deal_id", id)
+            .order("sequence")
+        : Promise.resolve({ data: [] }),
+    ]);
 
   const d = deal;
   type InstallmentRow = { id: string; sequence: number; due_date: string; amount: number; paid: boolean };
+  type SubPaymentRow = { id: string; sequence: number; due_date: string; amount: number; paid: boolean };
 
   const isAdmin = session.role === "admin";
 
@@ -148,7 +165,20 @@ export default async function DealDetailPage({
             }
           />
         )}
-        <Row label="Zahlungsart" value={PAYMENT_LABEL[d.payment_type]} />
+        {isSubscription && (d as { recurring_amount?: number | null }).recurring_amount != null && (
+          <Row
+            label="Abo-Betrag"
+            value={
+              <span className="font-medium tabular-nums text-violet-400">
+                {new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(
+                  (d as { recurring_amount: number }).recurring_amount,
+                )}
+                {d.payment_type === "subscription_monthly" ? "/Monat" : "/Jahr"}
+              </span>
+            }
+          />
+        )}
+        <Row label="Zahlungsart" value={PAYMENT_LABEL[d.payment_type] ?? d.payment_type} />
         <Row
           label="Abschluss"
           value={format(new Date(d.close_date), "dd. MMMM yyyy", {
@@ -183,6 +213,35 @@ export default async function DealDetailPage({
             <OneTimeToggle dealId={id} paid={oneTime.paid} />
           </div>
         </div>
+      )}
+
+      {/* Anmeldegebühr bei Abo-Deals */}
+      {isSubscription && oneTime && (
+        <div className="rounded-lg border border-border p-4 space-y-3">
+          <h2 className="text-sm font-semibold">Anmeldegebühr</h2>
+          {oneTime.due_date && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Fällig am</span>
+              <span className="text-sm tabular-nums">
+                {format(new Date(oneTime.due_date), "dd. MMMM yyyy", { locale: de })}
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Status</span>
+            <OneTimeToggle dealId={id} paid={oneTime.paid} />
+          </div>
+        </div>
+      )}
+
+      {/* Abo-Zahlungs-Tracker */}
+      {isSubscription && (
+        <SubscriptionTracker
+          dealId={id}
+          payments={(subscriptionPayments ?? []) as SubPaymentRow[]}
+          defaultAmount={(d as { recurring_amount?: number | null }).recurring_amount ?? 0}
+          interval={d.payment_type === "subscription_monthly" ? "monthly" : "yearly"}
+        />
       )}
 
       {/* Raten nachtragen — für importierte Deals ohne Raten */}

@@ -22,9 +22,10 @@ export type DealRowData = {
   platform_name: string | null;
   closer_name: string | null;
   total_price: number;
-  payment_type: "one_time" | "installments";
+  payment_type: "one_time" | "installments" | "subscription_monthly" | "subscription_yearly";
   close_date: string;
   down_payment: number | null;
+  recurring_amount: number | null;
   notes: string | null;
   mahnung_required: boolean;
   inkasso_required: boolean;
@@ -129,8 +130,8 @@ function fmt(v: number) {
 
 function getPaymentLabel(paymentType: string, productType?: string | null): string {
   if (paymentType === "one_time") return "Einmalzahlung";
-  if (productType === "subscription_monthly") return "Abo · monatlich";
-  if (productType === "subscription_yearly") return "Abo · jährlich";
+  if (paymentType === "subscription_monthly" || productType === "subscription_monthly") return "Abo · monatlich";
+  if (paymentType === "subscription_yearly" || productType === "subscription_yearly") return "Abo · jährlich";
   return "Ratenzahlung";
 }
 
@@ -281,7 +282,19 @@ export function DealsTable({
                   <td className="px-4 py-3 text-muted-foreground">{deal.platform_name ?? "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{deal.closer_name ?? "—"}</td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">
-                    {fmt(deal.total_price)}
+                    {isAbo && deal.recurring_amount ? (
+                      <div className="space-y-0.5">
+                        {deal.total_price > 0 && (
+                          <p className="text-xs text-muted-foreground">{fmt(deal.total_price)} einmalig</p>
+                        )}
+                        <p className="text-violet-400">
+                          {fmt(deal.recurring_amount)}/
+                          {deal.payment_type === "subscription_monthly" ? "Mo." : "Jahr"}
+                        </p>
+                      </div>
+                    ) : (
+                      fmt(deal.total_price)
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span
