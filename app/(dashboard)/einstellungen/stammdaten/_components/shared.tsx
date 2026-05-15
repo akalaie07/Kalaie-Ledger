@@ -1,7 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 
 import type { LookupAction } from "@/lib/actions/stammdaten";
 import { Button } from "@/components/ui/button";
@@ -60,4 +61,64 @@ export function ToggleButton({
 export function FieldError({ errors }: { errors?: string[] }) {
   if (!errors?.length) return null;
   return <p className="text-xs text-destructive">{errors[0]}</p>;
+}
+
+export function DeleteButton({
+  id,
+  onDelete,
+}: {
+  id: string;
+  onDelete: (id: string) => Promise<{ error?: string }>;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function handleDelete() {
+    startTransition(async () => {
+      const result = await onDelete(id);
+      if (result?.error) {
+        setError(result.error);
+        setConfirm(false);
+        toast.error(result.error);
+      }
+    });
+  }
+
+  if (confirm) {
+    return (
+      <div className="flex items-center gap-1">
+        {error && <p className="text-xs text-destructive mr-1">{error}</p>}
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={handleDelete}
+          disabled={pending}
+          className="h-7 px-2 text-xs"
+        >
+          {pending ? "…" : "Löschen"}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => { setConfirm(false); setError(null); }}
+          className="h-7 px-2 text-xs"
+        >
+          Abbrechen
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() => setConfirm(true)}
+      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+      title="Löschen"
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </Button>
+  );
 }

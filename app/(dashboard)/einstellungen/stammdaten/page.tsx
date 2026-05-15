@@ -6,12 +6,15 @@ import {
   createPlatform,
   updatePlatform,
   togglePlatform,
+  deletePlatform,
   createProduct,
   updateProduct,
   toggleProduct,
+  deleteProduct,
   createCloser,
   updateCloser,
   toggleCloser,
+  deleteCloser,
 } from "@/lib/actions/stammdaten";
 
 import { PlatformsSection, type Platform } from "./_components/platforms-section";
@@ -64,6 +67,7 @@ export default async function StammdatenPage() {
         createAction={createPlatform}
         updateAction={updatePlatform}
         toggleAction={togglePlatform}
+        deleteAction={deletePlatform}
       />
 
       <ProductsSection
@@ -71,6 +75,7 @@ export default async function StammdatenPage() {
         createAction={createProduct}
         updateAction={updateProduct}
         toggleAction={toggleProduct}
+        deleteAction={deleteProduct}
       />
 
       <StaffSection
@@ -80,6 +85,7 @@ export default async function StammdatenPage() {
         createAction={createCloser}
         updateAction={updateCloser}
         toggleAction={toggleCloser}
+        deleteAction={deleteCloser}
       />
     </div>
   );

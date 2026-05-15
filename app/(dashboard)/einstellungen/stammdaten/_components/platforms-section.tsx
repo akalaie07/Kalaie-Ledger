@@ -6,7 +6,7 @@ import type { LookupAction, LookupActionState } from "@/lib/actions/stammdaten";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FieldError, StatusBadge, ToggleButton } from "./shared";
+import { DeleteButton, FieldError, StatusBadge, ToggleButton } from "./shared";
 
 export type Platform = { id: string; name: string; active: boolean };
 
@@ -62,11 +62,13 @@ export function PlatformsSection({
   createAction,
   updateAction,
   toggleAction,
+  deleteAction,
 }: {
   items: Platform[];
   createAction: LookupAction;
   updateAction: LookupAction;
   toggleAction: LookupAction;
+  deleteAction: (id: string) => Promise<{ error?: string }>;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -119,6 +121,7 @@ export function PlatformsSection({
                     Bearbeiten
                   </Button>
                   <ToggleButton id={item.id} active={item.active} action={toggleAction} />
+                  <DeleteButton id={item.id} onDelete={deleteAction} />
                 </div>
               </div>
             )}

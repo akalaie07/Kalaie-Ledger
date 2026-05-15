@@ -6,7 +6,7 @@ import type { LookupAction, LookupActionState } from "@/lib/actions/stammdaten";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FieldError, StatusBadge, ToggleButton } from "./shared";
+import { DeleteButton, FieldError, StatusBadge, ToggleButton } from "./shared";
 
 export type StaffItem = {
   id: string;
@@ -126,6 +126,7 @@ export function StaffSection({
   createAction,
   updateAction,
   toggleAction,
+  deleteAction,
 }: {
   title: string;
   items: StaffItem[];
@@ -133,6 +134,7 @@ export function StaffSection({
   createAction: LookupAction;
   updateAction: LookupAction;
   toggleAction: LookupAction;
+  deleteAction: (id: string) => Promise<{ error?: string }>;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -192,6 +194,7 @@ export function StaffSection({
                     Bearbeiten
                   </Button>
                   <ToggleButton id={item.id} active={item.active} action={toggleAction} />
+                  <DeleteButton id={item.id} onDelete={deleteAction} />
                 </div>
               </div>
             )}

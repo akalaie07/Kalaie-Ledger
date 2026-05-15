@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { FieldError, StatusBadge, ToggleButton } from "./shared";
+import { DeleteButton, FieldError, StatusBadge, ToggleButton } from "./shared";
 
 export type ProductType = "standard" | "subscription_monthly" | "subscription_yearly";
 
@@ -186,11 +186,13 @@ export function ProductsSection({
   createAction,
   updateAction,
   toggleAction,
+  deleteAction,
 }: {
   items: Product[];
   createAction: LookupAction;
   updateAction: LookupAction;
   toggleAction: LookupAction;
+  deleteAction: (id: string) => Promise<{ error?: string }>;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -255,6 +257,7 @@ export function ProductsSection({
                     Bearbeiten
                   </Button>
                   <ToggleButton id={item.id} active={item.active} action={toggleAction} />
+                  <DeleteButton id={item.id} onDelete={deleteAction} />
                 </div>
               </div>
             )}

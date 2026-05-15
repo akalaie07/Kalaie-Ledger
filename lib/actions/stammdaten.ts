@@ -312,6 +312,68 @@ export async function toggleCloser(
 }
 
 // ===========================================================================
+// Delete actions
+// ===========================================================================
+
+function deleteErr(code: string | undefined, raw: string): { error: string } {
+  if (code === "23503")
+    return { error: "Kann nicht gelöscht werden — wird noch in Deals verwendet." };
+  return { error: raw };
+}
+
+export async function deletePlatform(id: string): Promise<{ error?: string }> {
+  const ctx = await adminCtx();
+  if ("err" in ctx) return { error: ctx.err };
+  const { error } = await ctx.supabase
+    .from("platforms")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", ctx.orgId);
+  if (error) return deleteErr(error.code, error.message);
+  revalidatePath(PATH);
+  return {};
+}
+
+export async function deleteProduct(id: string): Promise<{ error?: string }> {
+  const ctx = await adminCtx();
+  if ("err" in ctx) return { error: ctx.err };
+  const { error } = await ctx.supabase
+    .from("products")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", ctx.orgId);
+  if (error) return deleteErr(error.code, error.message);
+  revalidatePath(PATH);
+  return {};
+}
+
+export async function deleteCloser(id: string): Promise<{ error?: string }> {
+  const ctx = await adminCtx();
+  if ("err" in ctx) return { error: ctx.err };
+  const { error } = await ctx.supabase
+    .from("closers")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", ctx.orgId);
+  if (error) return deleteErr(error.code, error.message);
+  revalidatePath(PATH);
+  return {};
+}
+
+export async function deleteSalesPartner(id: string): Promise<{ error?: string }> {
+  const ctx = await adminCtx();
+  if ("err" in ctx) return { error: ctx.err };
+  const { error } = await ctx.supabase
+    .from("sales_partners")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", ctx.orgId);
+  if (error) return deleteErr(error.code, error.message);
+  revalidatePath(PATH);
+  return {};
+}
+
+// ===========================================================================
 // Sales Partners
 // ===========================================================================
 
