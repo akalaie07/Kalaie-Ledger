@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import { createDeal, type DealFormState } from "@/lib/actions/deals";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ interface DealFormProps {
   platforms: Option[];
   products: ProductOption[];
   closers: Option[];
-  salesPartners: Option[];
 }
 
 function FieldError({ msg }: { msg?: string }) {
@@ -38,6 +37,8 @@ function FormSelect({
   required,
   error,
   placeholder = "— keine —",
+  value,
+  onChange,
 }: {
   name: string;
   label: string;
@@ -45,6 +46,8 @@ function FormSelect({
   required?: boolean;
   error?: string;
   placeholder?: string;
+  value?: string;
+  onChange?: (val: string) => void;
 }) {
   return (
     <div className="space-y-1.5">
@@ -55,6 +58,8 @@ function FormSelect({
       <select
         id={name}
         name={name}
+        value={value}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
         className={cn(
           "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
           "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -78,33 +83,71 @@ export function DealForm({
   platforms,
   products,
   closers,
-  salesPartners,
 }: DealFormProps) {
   const [state, action, pending] = useActionState<DealFormState, FormData>(
     createDeal,
     null,
   );
-  const [paymentType, setPaymentType] = useState<"one_time" | "installments">("one_time");
-  const [hasAnzahlung, setHasAnzahlung] = useState(false);
-  const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
-  const [totalPrice, setTotalPrice] = useState<number>(0);
-  const [downPayment, setDownPayment] = useState<number>(0);
-  const [numberOfRates, setNumberOfRates] = useState<number>(0);
+  // Zahlungsmodell: einmalig | abo | hybrid
+  type PaymentModel = "einmalig" | "abo" | "hybrid";
+  const [paymentModel, setPaymentModel] = useState<PaymentModel>("einmalig");
+  const [aufnahmegebuehr, setAufnahmegebuehr] = useState<number>(0);
+  const [monthlyAmount, setMonthlyAmount] = useState<number>(0);
+  const [laufzeit, setLaufzeit] = useState<number>(0);
   const [selectedProductType, setSelectedProductType] = useState<"standard" | "subscription_monthly" | "subscription_yearly">("standard");
+  const [closeDate, setCloseDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [closerId, setCloserId] = useState<string>("");
 
-  const isSubscription = selectedProductType === "subscription_monthly" || selectedProductType === "subscription_yearly";
+  // Berechnete Werte für hidden inputs
+  const computedPaymentType = paymentModel === "einmalig" ? "one_time" : "installments";
+  const computedTotalPrice =
+    paymentModel === "einmalig"
+      ? aufnahmegebuehr
+      : paymentModel === "abo"
+      ? monthlyAmount * laufzeit
+      : aufnahmegebuehr + monthlyAmount * laufzeit;
+  const computedDownPayment = paymentModel === "hybrid" ? aufnahmegebuehr : null;
+
+  // Letztes Datum + letzten Closer aus localStorage laden
+  useEffect(() => {
+    const savedDate = localStorage.getItem("kalaie_last_close_date");
+    if (savedDate) setCloseDate(savedDate);
+
+    const savedCloser = localStorage.getItem("kalaie_last_closer_id");
+    if (savedCloser && closers.some((c) => c.id === savedCloser)) {
+      setCloserId(savedCloser);
+    }
+  }, [closers]);
+
+  function handleCloseDateChange(val: string) {
+    setCloseDate(val);
+    if (val) localStorage.setItem("kalaie_last_close_date", val);
+  }
+
+  function handleCloserChange(val: string) {
+    setCloserId(val);
+    if (val) localStorage.setItem("kalaie_last_closer_id", val);
+    else localStorage.removeItem("kalaie_last_closer_id");
+  }
 
   function handleProductChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const product = products.find((p) => p.id === e.target.value);
     const pt = product?.product_type ?? "standard";
     setSelectedProductType(pt);
     if (pt === "subscription_monthly" || pt === "subscription_yearly") {
-      setPaymentType("installments");
+      setPaymentModel("abo");
     }
   }
 
-  const subscriptionLabel = selectedProductType === "subscription_monthly" ? "Monatliche Zahlung" : "Jährliche Zahlung";
-  const ratenLabel = selectedProductType === "subscription_monthly" ? "Laufzeit (Monate)" : selectedProductType === "subscription_yearly" ? "Laufzeit (Jahre)" : "Anzahl Raten";
+  const laufzeitLabel =
+    selectedProductType === "subscription_monthly"
+      ? "Laufzeit (Monate)"
+      : selectedProductType === "subscription_yearly"
+      ? "Laufzeit (Jahre)"
+      : "Anzahl Raten";
+
+  const fmt = (v: number) =>
+    new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
 
   const fe = state?.fieldErrors ?? {};
 
@@ -170,40 +213,25 @@ export function DealForm({
           />
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="payment_method">Zahlart</Label>
-          <Input
-            id="payment_method"
-            name="payment_method"
-            placeholder="z.B. Überweisung, Kreditkarte, PayPal"
-          />
-        </div>
       </section>
 
-      {/* ── Preise & Zahlung ── */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Preise & Zahlung
-        </h2>
+      {/* ── Preise & Zahlung (Hybrid-Modell) ── */}
+      <section className="space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Preise & Zahlung
+          </h2>
+        </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="total_price">
-              Gesamtpreis (€) <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="total_price"
-              name="total_price"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-              aria-invalid={!!fe.total_price}
-              onChange={(e) => setTotalPrice(parseFloat(e.target.value) || 0)}
-            />
-            <FieldError msg={fe.total_price?.[0]} />
-          </div>
+        {/* Hidden computed fields für den Server */}
+        <input type="hidden" name="payment_type" value={computedPaymentType} />
+        <input type="hidden" name="total_price" value={computedTotalPrice || 0} />
+        {computedDownPayment !== null && (
+          <input type="hidden" name="down_payment" value={computedDownPayment} />
+        )}
 
+        {/* Abschlussdatum */}
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="close_date">
               Abschlussdatum <span className="text-destructive">*</span>
@@ -213,141 +241,198 @@ export function DealForm({
               name="close_date"
               type="date"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              value={closeDate}
+              onChange={(e) => handleCloseDateChange(e.target.value)}
               aria-invalid={!!fe.close_date}
             />
             <FieldError msg={fe.close_date?.[0]} />
           </div>
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="payment_type">
-              Zahlungsart <span className="text-destructive">*</span>
-            </Label>
-            {isSubscription ? (
-              <>
-                <input type="hidden" name="payment_type" value="installments" />
-                <div className="flex h-9 items-center rounded-md border border-violet-500/30 bg-violet-500/10 px-3 text-sm text-violet-300">
-                  Abo — {subscriptionLabel}
-                </div>
-              </>
-            ) : (
-              <select
-                id="payment_type"
-                name="payment_type"
-                value={paymentType}
-                onChange={(e) => setPaymentType(e.target.value as "one_time" | "installments")}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        {/* Zahlungsmodell-Auswahl */}
+        <div className="space-y-2">
+          <Label>Zahlungsmodell <span className="text-destructive">*</span></Label>
+          <div className="grid grid-cols-3 gap-2">
+            {(
+              [
+                { value: "einmalig", label: "Einmalzahlung" },
+                { value: "abo", label: "Abo / Wiederkehrend" },
+                { value: "hybrid", label: "Hybrid" },
+              ] as const
+            ).map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPaymentModel(value)}
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+                  paymentModel === value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground",
+                )}
               >
-                <option value="one_time">Einmalzahlung</option>
-                <option value="installments">Ratenzahlung</option>
-              </select>
-            )}
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Anzahlung */}
-        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={hasAnzahlung}
-              onChange={(e) => setHasAnzahlung(e.target.checked)}
-              className="h-4 w-4 rounded border-input accent-primary"
-            />
-            Anzahlung geleistet
-          </label>
-
-          {hasAnzahlung && (
-            <div className="space-y-1.5">
-              <Label htmlFor="down_payment">
-                Höhe der Anzahlung (€) <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="down_payment"
-                name="down_payment"
-                type="number"
-                min="0"
-                step="0.01"
-                aria-invalid={!!fe.down_payment}
-                onChange={(e) => setDownPayment(parseFloat(e.target.value) || 0)}
-              />
-              <FieldError msg={fe.down_payment?.[0]} />
+        {/* ── Einmalige Zahlung ─────────────────────────────────────── */}
+        {(paymentModel === "einmalig" || paymentModel === "hybrid") && (
+          <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-4">
+            <h3 className="text-sm font-semibold">Einmalige Zahlung</h3>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 border-b border-border">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Feld</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Wert</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {paymentModel === "hybrid" ? "Aufnahmegebühr" : "Betrag"}{" "}
+                      <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0,00"
+                        value={aufnahmegebuehr || ""}
+                        onChange={(e) => setAufnahmegebuehr(parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.total_price}
+                      />
+                      <FieldError msg={fe.total_price?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Fällig am</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        id="one_time_due_date"
+                        name="one_time_due_date"
+                        type="date"
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.one_time_due_date}
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
-
-        {/* Fälligkeitsdatum nur bei Einmalzahlung */}
-        {paymentType === "one_time" && (
-          <div className="space-y-1.5">
-            <Label htmlFor="one_time_due_date">Zahlung fällig zum</Label>
-            <Input
-              id="one_time_due_date"
-              name="one_time_due_date"
-              type="date"
-              aria-invalid={!!fe.one_time_due_date}
-            />
-            <FieldError msg={fe.one_time_due_date?.[0]} />
           </div>
         )}
 
-        {/* Raten-Felder */}
-        {paymentType === "installments" && (
-          <div className="space-y-3">
-            <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border bg-muted/20 p-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="number_of_rates">
-                  {ratenLabel} <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="number_of_rates"
-                  name="number_of_rates"
-                  type="number"
-                  min={isSubscription ? "1" : "2"}
-                  required
-                  aria-invalid={!!fe.number_of_rates}
-                  onChange={(e) => setNumberOfRates(parseInt(e.target.value) || 0)}
-                />
-                <FieldError msg={fe.number_of_rates?.[0]} />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="first_due_date">
-                  Erstes Fälligkeitsdatum <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="first_due_date"
-                  name="first_due_date"
-                  type="date"
-                  required
-                  aria-invalid={!!fe.first_due_date}
-                />
-                <FieldError msg={fe.first_due_date?.[0]} />
-              </div>
+        {/* ── Wiederkehrende Zahlung ────────────────────────────────── */}
+        {(paymentModel === "abo" || paymentModel === "hybrid") && (
+          <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-4">
+            <h3 className="text-sm font-semibold">Wiederkehrende Zahlung</h3>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 border-b border-border">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Feld</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Wert</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      Betrag pro Rate <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0,00"
+                        value={monthlyAmount || ""}
+                        onChange={(e) => setMonthlyAmount(parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {laufzeitLabel} <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        id="number_of_rates"
+                        name="number_of_rates"
+                        type="number"
+                        min="1"
+                        placeholder="z.B. 12"
+                        value={laufzeit || ""}
+                        onChange={(e) => setLaufzeit(parseInt(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                        required
+                        aria-invalid={!!fe.number_of_rates}
+                      />
+                      <FieldError msg={fe.number_of_rates?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      Erstes Fälligkeitsdatum <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        id="first_due_date"
+                        name="first_due_date"
+                        type="date"
+                        required
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.first_due_date}
+                      />
+                      <FieldError msg={fe.first_due_date?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Kündigungsfrist</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        id="payment_method"
+                        name="payment_method"
+                        placeholder="z.B. Monatlich kündbar"
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
-            {/* Live-Vorschau Ratenbetrag */}
-            {totalPrice > 0 && numberOfRates >= 2 && (
-              (() => {
-                const effective = hasAnzahlung ? downPayment : 0;
-                const base = totalPrice - effective;
-                const perRate = base > 0 ? base / numberOfRates : 0;
-                const fmt = (v: number) =>
-                  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
-                return (
-                  <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
-                    <p className="font-medium text-blue-300">Ratenvorschau</p>
-                    <div className="mt-1.5 space-y-0.5 text-blue-200/80">
-                      {hasAnzahlung && effective > 0 && (
-                        <p>Gesamtpreis {fmt(totalPrice)} − Anzahlung {fmt(effective)} = <span className="font-medium text-blue-100">{fmt(base)}</span> verbleibend</p>
-                      )}
-                      <p>
-                        {fmt(base)} ÷ {numberOfRates} Raten = <span className="font-semibold text-blue-100 text-base">{fmt(perRate)} pro Rate</span>
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()
+            {/* Live-Vorschau */}
+            {monthlyAmount > 0 && laufzeit >= 1 && (
+              <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
+                <p className="font-medium text-blue-300 mb-1">Vorschau</p>
+                <div className="space-y-0.5 text-blue-200/80">
+                  <p>
+                    {fmt(monthlyAmount)} × {laufzeit} {laufzeitLabel.includes("Monat") ? "Monate" : "Perioden"} ={" "}
+                    <span className="font-semibold text-blue-100">{fmt(monthlyAmount * laufzeit)}</span>
+                  </p>
+                  {paymentModel === "hybrid" && aufnahmegebuehr > 0 && (
+                    <p>
+                      + {fmt(aufnahmegebuehr)} Aufnahmegebühr ={" "}
+                      <span className="font-semibold text-blue-100 text-base">{fmt(computedTotalPrice)}</span> Gesamt
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
+          </div>
+        )}
+
+        {/* Gesamtpreis-Anzeige */}
+        {computedTotalPrice > 0 && (
+          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-4 py-3">
+            <span className="text-sm text-muted-foreground">Gesamtpreis (berechnet)</span>
+            <span className="font-semibold tabular-nums">{fmt(computedTotalPrice)}</span>
           </div>
         )}
       </section>
@@ -364,56 +449,9 @@ export function DealForm({
             label="Closer"
             options={closers}
             error={fe.closer_id?.[0]}
+            value={closerId}
+            onChange={handleCloserChange}
           />
-
-          {/* Vertriebspartner: aus Liste oder neu anlegen */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor={salesPartnerMode === "select" ? "sales_partner_id" : "new_sales_partner_name"}>
-                Vertriebspartner
-              </Label>
-              <button
-                type="button"
-                onClick={() => setSalesPartnerMode(salesPartnerMode === "select" ? "new" : "select")}
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-              >
-                {salesPartnerMode === "select" ? "+ Neu anlegen" : "Aus Liste wählen"}
-              </button>
-            </div>
-
-            {salesPartnerMode === "select" ? (
-              <>
-                <select
-                  id="sales_partner_id"
-                  name="sales_partner_id"
-                  className={cn(
-                    "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                    fe.sales_partner_id && "border-destructive",
-                  )}
-                >
-                  <option value="">— keine —</option>
-                  {salesPartners.map((o) => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-                <FieldError msg={fe.sales_partner_id?.[0]} />
-              </>
-            ) : (
-              <>
-                <Input
-                  id="new_sales_partner_name"
-                  name="new_sales_partner_name"
-                  placeholder="Name des Vertriebspartners"
-                  aria-invalid={!!fe.new_sales_partner_name}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Wird automatisch in Stammdaten angelegt (0 % Provision — bitte nachpflegen).
-                </p>
-                <FieldError msg={fe.new_sales_partner_name?.[0]} />
-              </>
-            )}
-          </div>
         </div>
       </section>
 
@@ -442,6 +480,19 @@ export function DealForm({
               {label}
             </label>
           ))}
+        </div>
+
+        {/* Rückbuchung — visuell abgesetzt in dunkelrot */}
+        <div className="rounded-lg border border-red-900/40 bg-red-900/10 px-4 py-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-red-400">
+            <input
+              type="checkbox"
+              name="chargeback"
+              value="on"
+              className="h-4 w-4 rounded border-red-800 accent-red-700"
+            />
+            Rückbuchung — Zahlung wurde zurückgebucht / storniert
+          </label>
         </div>
       </section>
 

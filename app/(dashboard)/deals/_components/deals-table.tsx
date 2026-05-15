@@ -3,12 +3,13 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { HandshakeIcon, PhoneCall, TriangleAlert, Gavel, Trash2 } from "lucide-react";
+import { HandshakeIcon, PhoneCall, TriangleAlert, Gavel, Trash2, Undo2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { bulkDeleteDeals } from "@/lib/actions/deals";
+import { bulkDeleteDeals, toggleDealFlag, setDealEscalation } from "@/lib/actions/deals";
 import { DealRowActions } from "./deal-row-actions";
 import { NotePopup } from "./note-popup";
 
@@ -27,6 +28,7 @@ export type DealRowData = {
   notes: string | null;
   mahnung_required: boolean;
   inkasso_required: boolean;
+  chargeback: boolean;
   onboarding_done: boolean;
   update_call_done: boolean;
   otp_paid: boolean | null;
@@ -34,6 +36,92 @@ export type DealRowData = {
   inst_paid: number;
   inst_open_amount: number;
 };
+
+// =============================================================================
+// Status-Icons — klickbar, Mahnung/Inkasso nur wenn aktiv sichtbar
+// =============================================================================
+
+function DealStatusIcons({
+  dealId,
+  onboardingDone,
+  updateCallDone,
+  mahnungRequired,
+  inkassoRequired,
+}: {
+  dealId: string;
+  onboardingDone: boolean;
+  updateCallDone: boolean;
+  mahnungRequired: boolean;
+  inkassoRequired: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function toggle(flag: "onboarding_done" | "update_call_done", current: boolean) {
+    startTransition(async () => {
+      await toggleDealFlag(dealId, flag, !current);
+      router.refresh();
+    });
+  }
+
+  function deactivateMahnung() {
+    startTransition(async () => {
+      await setDealEscalation(dealId, false, false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        title={onboardingDone ? "Onboarding rückgängig" : "Onboarding als erledigt markieren"}
+        onClick={(e) => { e.preventDefault(); toggle("onboarding_done", onboardingDone); }}
+        disabled={pending}
+        className={cn(
+          "rounded p-0.5 transition-colors disabled:opacity-50",
+          onboardingDone
+            ? "text-emerald-400 hover:text-emerald-300"
+            : "text-muted-foreground/25 hover:text-muted-foreground/60",
+        )}
+      >
+        <HandshakeIcon className="h-3.5 w-3.5" />
+      </button>
+
+      <button
+        title={updateCallDone ? "Update-Call rückgängig" : "Update-Call als erledigt markieren"}
+        onClick={(e) => { e.preventDefault(); toggle("update_call_done", updateCallDone); }}
+        disabled={pending}
+        className={cn(
+          "rounded p-0.5 transition-colors disabled:opacity-50",
+          updateCallDone
+            ? "text-blue-400 hover:text-blue-300"
+            : "text-muted-foreground/25 hover:text-muted-foreground/60",
+        )}
+      >
+        <PhoneCall className="h-3.5 w-3.5" />
+      </button>
+
+      {/* Mahnung — nur sichtbar wenn aktiv, klicken = deaktivieren */}
+      {mahnungRequired && (
+        <button
+          title="Mahnung aufheben"
+          onClick={(e) => { e.preventDefault(); deactivateMahnung(); }}
+          disabled={pending}
+          className="rounded p-0.5 text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
+        >
+          <TriangleAlert className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      {/* Inkasso — nur sichtbar wenn aktiv, zeigt Status (nicht klickbar) */}
+      {inkassoRequired && (
+        <span title="Inkasso" className="rounded p-0.5 text-rose-400">
+          <Gavel className="h-3.5 w-3.5" />
+        </span>
+      )}
+    </div>
+  );
+}
 
 function fmt(v: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
@@ -145,7 +233,7 @@ export function DealsTable({
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Preis</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Zahlung</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bezahlt</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Abschluss</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Datum</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
               {isAdmin && <th className="px-4 py-3" />}
             </tr>
@@ -225,9 +313,14 @@ export function DealsTable({
                                     : "bg-rose-500/15 text-rose-400",
                                 )}
                               >
-                                {isPaid ? "Bezahlt" : "Offen"}
+                                {isPaid ? `Bezahlt · ${fmt(deal.total_price)}` : "Offen"}
                               </span>
-                              {(deal.down_payment || (!isPaid && openAmt > 0)) && (
+                              {deal.chargeback && (
+                                <p className="text-xs font-medium text-red-800">
+                                  Rückbuchung
+                                </p>
+                              )}
+                              {!deal.chargeback && (deal.down_payment || (!isPaid && openAmt > 0)) && (
                                 <p className="text-xs text-muted-foreground">
                                   {deal.down_payment ? `AZ ${fmt(deal.down_payment)}` : ""}
                                   {deal.down_payment && !isPaid && openAmt > 0 ? " · " : ""}
@@ -259,7 +352,12 @@ export function DealsTable({
                               >
                                 {paid}/{total} Raten
                               </span>
-                              {(deal.down_payment || (!done && openAmount > 0)) && (
+                              {deal.chargeback && (
+                                <p className="text-xs font-medium text-red-800">
+                                  Rückbuchung
+                                </p>
+                              )}
+                              {!deal.chargeback && (deal.down_payment || (!done && openAmount > 0)) && (
                                 <p className="text-xs text-muted-foreground">
                                   {deal.down_payment ? `AZ ${fmt(deal.down_payment)}` : ""}
                                   {deal.down_payment && !done && openAmount > 0 ? " · " : ""}
@@ -279,42 +377,18 @@ export function DealsTable({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
-                      <span
-                        title="Onboarding"
-                        className={cn(
-                          "rounded p-0.5 transition-colors",
-                          deal.onboarding_done ? "text-emerald-400" : "text-muted-foreground/25",
-                        )}
-                      >
-                        <HandshakeIcon className="h-3.5 w-3.5" />
-                      </span>
-                      <span
-                        title="Update-Call"
-                        className={cn(
-                          "rounded p-0.5 transition-colors",
-                          deal.update_call_done ? "text-blue-400" : "text-muted-foreground/25",
-                        )}
-                      >
-                        <PhoneCall className="h-3.5 w-3.5" />
-                      </span>
-                      <span
-                        title="Mahnung"
-                        className={cn(
-                          "rounded p-0.5 transition-colors",
-                          deal.mahnung_required ? "text-amber-400" : "text-muted-foreground/25",
-                        )}
-                      >
-                        <TriangleAlert className="h-3.5 w-3.5" />
-                      </span>
-                      <span
-                        title="Inkasso"
-                        className={cn(
-                          "rounded p-0.5 transition-colors",
-                          deal.inkasso_required ? "text-rose-400" : "text-muted-foreground/25",
-                        )}
-                      >
-                        <Gavel className="h-3.5 w-3.5" />
-                      </span>
+                      <DealStatusIcons
+                        dealId={deal.id}
+                        onboardingDone={deal.onboarding_done}
+                        updateCallDone={deal.update_call_done}
+                        mahnungRequired={deal.mahnung_required}
+                        inkassoRequired={deal.inkasso_required}
+                      />
+                      {deal.chargeback && (
+                        <span title="Rückbuchung" className="rounded p-0.5 text-red-800">
+                          <Undo2 className="h-3.5 w-3.5" />
+                        </span>
+                      )}
                     </div>
                   </td>
                   {isAdmin && (

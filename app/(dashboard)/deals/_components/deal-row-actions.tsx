@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
-import { Pencil, Trash2, TriangleAlert } from "lucide-react";
+import { Pencil, Trash2, TriangleAlert, Gavel } from "lucide-react";
 
 import { deleteDeal, setDealEscalation } from "@/lib/actions/deals";
 import { cn } from "@/lib/utils";
@@ -29,16 +29,18 @@ export function DealRowActions({
     e.preventDefault();
     if (inkassoRequired) return;
     if (mahnungRequired) {
+      // Dreieck wurde zu Gavel → Klick = Inkasso setzen, Mahnung aufheben
       if (!confirm("Deal zu Inkasso eskalieren?")) return;
-      startEscalate(async () => { await setDealEscalation(dealId, true, true); });
+      startEscalate(async () => { await setDealEscalation(dealId, false, true); });
     } else {
+      // Dreieck → Mahnung setzen (kein Confirm nötig)
       startEscalate(async () => { await setDealEscalation(dealId, true, false); });
     }
   }
 
   return (
     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-      {/* Escalation triangle — only shown when not yet in Inkasso */}
+      {/* Eskalations-Button: Dreieck (→ Mahnung) oder Gavel (→ Inkasso), verschwindet wenn Inkasso aktiv */}
       {!inkassoRequired && (
         <button
           onClick={handleEscalate}
@@ -53,7 +55,9 @@ export function DealRowActions({
         >
           {escalatePending
             ? <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent" />
-            : <TriangleAlert className="h-3.5 w-3.5" />}
+            : mahnungRequired
+              ? <Gavel className="h-3.5 w-3.5" />
+              : <TriangleAlert className="h-3.5 w-3.5" />}
         </button>
       )}
 

@@ -42,7 +42,6 @@ const DealSchema = z.object({
     .trim()
     .optional()
     .transform((v) => v || null),
-  sales_partner_id: uuidOpt,
   closer_id: uuidOpt,
   total_price: z.coerce
     .number()
@@ -56,6 +55,10 @@ const DealSchema = z.object({
     .optional()
     .transform((v) => v === "on"),
   mahnung_required: z
+    .string()
+    .optional()
+    .transform((v) => v === "on"),
+  chargeback: z
     .string()
     .optional()
     .transform((v) => v === "on"),
@@ -86,12 +89,6 @@ const DealSchema = z.object({
   ),
   // Neu: Fälligkeitsdatum für Einmalzahlung
   one_time_due_date: optDate,
-  // Neu: Vertriebspartner inline anlegen
-  new_sales_partner_name: z
-    .string()
-    .trim()
-    .optional()
-    .transform((v) => v || null),
 });
 
 // ---------------------------------------------------------------------------
@@ -153,7 +150,6 @@ export async function createDeal(
     number_of_rates,
     first_due_date,
     one_time_due_date,
-    new_sales_partner_name,
     down_payment,
     ...dealFields
   } = result.data;
@@ -167,26 +163,10 @@ export async function createDeal(
 
   const supabase = await createClient();
 
-  // Neuen Vertriebspartner anlegen wenn eingegeben
-  let salesPartnerId = dealFields.sales_partner_id;
-  if (new_sales_partner_name) {
-    const { data: newPartner } = await supabase
-      .from("sales_partners")
-      .insert({
-        organization_id: session.organizationId,
-        name: new_sales_partner_name,
-        commission_rate: 0,
-      })
-      .select("id")
-      .single();
-    if (newPartner) salesPartnerId = newPartner.id;
-  }
-
   const { data: deal, error } = await supabase
     .from("deals")
     .insert({
       ...dealFields,
-      sales_partner_id: salesPartnerId,
       down_payment,
       organization_id: session.organizationId,
       created_by: session.userId,
@@ -242,31 +222,15 @@ export async function updateDeal(
     number_of_rates: _nr,
     first_due_date: _fd,
     one_time_due_date,
-    new_sales_partner_name,
     down_payment,
     ...dealFields
   } = result.data;
 
   const supabase = await createClient();
 
-  // Neuen Vertriebspartner anlegen wenn eingegeben
-  let salesPartnerId = dealFields.sales_partner_id;
-  if (new_sales_partner_name) {
-    const { data: newPartner } = await supabase
-      .from("sales_partners")
-      .insert({
-        organization_id: session.organizationId,
-        name: new_sales_partner_name,
-        commission_rate: 0,
-      })
-      .select("id")
-      .single();
-    if (newPartner) salesPartnerId = newPartner.id;
-  }
-
   const { error } = await supabase
     .from("deals")
-    .update({ ...dealFields, sales_partner_id: salesPartnerId, down_payment })
+    .update({ ...dealFields, down_payment })
     .eq("id", id)
     .eq("organization_id", session.organizationId);
 
@@ -324,6 +288,30 @@ export async function bulkDeleteDeals(ids: string[]): Promise<{ error?: string }
 }
 
 // ---------------------------------------------------------------------------
+// toggleDealFlag — Onboarding / Update-Call direkt aus der Tabelle toggeln
+// ---------------------------------------------------------------------------
+
+export async function toggleDealFlag(
+  dealId: string,
+  flag: "onboarding_done" | "update_call_done",
+  value: boolean,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("deals")
+    .update({ [flag]: value })
+    .eq("id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  revalidatePath("/deals");
+  if (error) return { error: error.message };
+  return {};
+}
+
+// ---------------------------------------------------------------------------
 // setDealEscalation
 // ---------------------------------------------------------------------------
 
@@ -369,6 +357,58 @@ export async function updateDealNote(
 
   revalidatePath("/forderungsmanagement/mahnung");
   if (error) return { error: error.message };
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// generateInstallmentsForDeal — Raten für bestehenden Deal nachtragen
+// (z.B. für importierte Deals ohne Raten)
+// ---------------------------------------------------------------------------
+
+export async function generateInstallmentsForDeal(
+  dealId: string,
+  numberOfRates: number,
+  firstDueDate: string,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  if (numberOfRates < 1 || numberOfRates > 360)
+    return { error: "Anzahl Raten muss zwischen 1 und 360 liegen." };
+
+  const supabase = await createClient();
+
+  // Deal laden um total_price und down_payment zu ermitteln
+  const { data: deal } = await supabase
+    .from("deals")
+    .select("total_price, down_payment")
+    .eq("id", dealId)
+    .eq("organization_id", session.organizationId)
+    .single();
+
+  if (!deal) return { error: "Deal nicht gefunden." };
+
+  // Bestehende Raten löschen (Neuberechnung)
+  await supabase
+    .from("installments")
+    .delete()
+    .eq("deal_id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  const installmentTotal = deal.total_price - (deal.down_payment ?? 0);
+  const rows = generateInstallments(
+    dealId,
+    session.organizationId,
+    installmentTotal,
+    numberOfRates,
+    firstDueDate,
+  );
+
+  const { error } = await supabase.from("installments").insert(rows);
+  if (error) return { error: "Raten konnten nicht gespeichert werden." };
+
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath("/deals");
   return {};
 }
 

@@ -21,7 +21,7 @@ export default async function DealEditPage({
   const session = await requireRole("admin");
   const supabase = await createClient();
 
-  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: salesPartners }, { data: oneTime }] =
+  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: oneTime }] =
     await Promise.all([
       supabase
         .from("deals")
@@ -43,12 +43,6 @@ export default async function DealEditPage({
         .order("name"),
       supabase
         .from("closers")
-        .select("id, name")
-        .eq("organization_id", session.organizationId)
-        .eq("active", true)
-        .order("name"),
-      supabase
-        .from("sales_partners")
         .select("id, name")
         .eq("organization_id", session.organizationId)
         .eq("active", true)
@@ -81,7 +75,6 @@ export default async function DealEditPage({
         platforms={platforms ?? []}
         products={(products ?? []) as unknown as ProductOption[]}
         closers={closers ?? []}
-        salesPartners={salesPartners ?? []}
         initial={{
           customer_name: deal.customer_name,
           order_id: deal.order_id,
@@ -95,9 +88,9 @@ export default async function DealEditPage({
           update_call_done: deal.update_call_done,
           mahnung_required: deal.mahnung_required ?? false,
           inkasso_required: deal.inkasso_required,
+          chargeback: deal.chargeback ?? false,
           notes: deal.notes,
           closer_id: deal.closer_id,
-          sales_partner_id: deal.sales_partner_id,
           down_payment: deal.down_payment ?? null,
           one_time_due_date: oneTime?.due_date ?? null,
         }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import { updateDeal, type DealFormState } from "@/lib/actions/deals";
 import { type ProductOption } from "@/app/(dashboard)/deals/new/_components/deal-form";
@@ -16,7 +16,6 @@ interface DealEditFormProps {
   platforms: Option[];
   products: ProductOption[];
   closers: Option[];
-  salesPartners: Option[];
   initial: {
     customer_name: string;
     order_id: string | null;
@@ -30,9 +29,9 @@ interface DealEditFormProps {
     update_call_done: boolean;
     mahnung_required: boolean;
     inkasso_required: boolean;
+    chargeback: boolean;
     notes: string | null;
     closer_id: string | null;
-    sales_partner_id: string | null;
     down_payment: number | null;
     one_time_due_date: string | null;
   };
@@ -84,7 +83,6 @@ export function DealEditForm({
   platforms,
   products,
   closers,
-  salesPartners,
   initial,
 }: DealEditFormProps) {
   const updateDealWithId = updateDeal.bind(null, dealId);
@@ -99,10 +97,22 @@ export function DealEditForm({
   );
   const [paymentType, setPaymentType] = useState<"one_time" | "installments">(initial.payment_type);
   const [hasAnzahlung, setHasAnzahlung] = useState(initial.down_payment != null);
-  const [salesPartnerMode, setSalesPartnerMode] = useState<"select" | "new">("select");
   const [totalPrice, setTotalPrice] = useState(initial.total_price);
   const [downPayment, setDownPayment] = useState(initial.down_payment ?? 0);
   const [numberOfRates, setNumberOfRates] = useState(0);
+  const [closeDate, setCloseDate] = useState<string>(initial.close_date);
+
+  // Letztes eingegebenes Datum aus localStorage laden (pro Deal-ID)
+  useEffect(() => {
+    const key = `kalaie_edit_close_date_${dealId}`;
+    const saved = localStorage.getItem(key);
+    if (saved) setCloseDate(saved);
+  }, [dealId]);
+
+  function handleCloseDateChange(val: string) {
+    setCloseDate(val);
+    if (val) localStorage.setItem(`kalaie_edit_close_date_${dealId}`, val);
+  }
 
   const isSubscription = selectedProductType === "subscription_monthly" || selectedProductType === "subscription_yearly";
 
@@ -230,7 +240,8 @@ export function DealEditForm({
               name="close_date"
               type="date"
               required
-              defaultValue={initial.close_date}
+              value={closeDate}
+              onChange={(e) => handleCloseDateChange(e.target.value)}
               aria-invalid={!!fe.close_date}
             />
             <FieldError msg={fe.close_date?.[0]} />
@@ -371,56 +382,6 @@ export function DealEditForm({
             defaultValue={initial.closer_id}
             error={fe.closer_id?.[0]}
           />
-
-          {/* Vertriebspartner: aus Liste oder neu anlegen */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor={salesPartnerMode === "select" ? "sales_partner_id" : "new_sales_partner_name"}>
-                Vertriebspartner
-              </Label>
-              <button
-                type="button"
-                onClick={() => setSalesPartnerMode(salesPartnerMode === "select" ? "new" : "select")}
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-              >
-                {salesPartnerMode === "select" ? "+ Neu anlegen" : "Aus Liste wählen"}
-              </button>
-            </div>
-
-            {salesPartnerMode === "select" ? (
-              <>
-                <select
-                  id="sales_partner_id"
-                  name="sales_partner_id"
-                  defaultValue={initial.sales_partner_id ?? ""}
-                  className={cn(
-                    "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                    fe.sales_partner_id && "border-destructive",
-                  )}
-                >
-                  <option value="">— keine —</option>
-                  {salesPartners.map((o) => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-                <FieldError msg={fe.sales_partner_id?.[0]} />
-              </>
-            ) : (
-              <>
-                <Input
-                  id="new_sales_partner_name"
-                  name="new_sales_partner_name"
-                  placeholder="Name des Vertriebspartners"
-                  aria-invalid={!!fe.new_sales_partner_name}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Wird automatisch in Stammdaten angelegt (0 % Provision — bitte nachpflegen).
-                </p>
-                <FieldError msg={fe.new_sales_partner_name?.[0]} />
-              </>
-            )}
-          </div>
         </div>
       </section>
 
@@ -448,6 +409,20 @@ export function DealEditForm({
               {label}
             </label>
           ))}
+        </div>
+
+        {/* Rückbuchung — visuell abgesetzt in dunkelrot */}
+        <div className="rounded-lg border border-red-900/40 bg-red-900/10 px-4 py-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-red-400">
+            <input
+              type="checkbox"
+              name="chargeback"
+              value="on"
+              defaultChecked={initial.chargeback}
+              className="h-4 w-4 rounded border-red-800 accent-red-700"
+            />
+            Rückbuchung — Zahlung wurde zurückgebucht / storniert
+          </label>
         </div>
       </section>
 

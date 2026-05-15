@@ -92,7 +92,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, onboarding_done, update_call_done, order_id, notes, down_payment, platforms(name), products(name, product_type), closers(name), sales_partners(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, chargeback, onboarding_done, update_call_done, order_id, notes, down_payment, platforms(name), products(name, product_type), closers(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -210,6 +210,7 @@ export default async function DealsPage({
       notes: d.notes ?? null,
       mahnung_required: d.mahnung_required ?? false,
       inkasso_required: d.inkasso_required ?? false,
+      chargeback: (d.chargeback as boolean) ?? false,
       onboarding_done: d.onboarding_done ?? false,
       update_call_done: (d.update_call_done as boolean) ?? false,
       otp_paid: d.payment_type === "one_time" ? (otpMap.get(d.id) ?? false) : null,

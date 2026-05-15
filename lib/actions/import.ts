@@ -17,7 +17,6 @@ export type ImportRow = {
   product_name?: string;
   payment_method?: string;
   closer_name?: string;
-  sales_partner_name?: string;
   total_price: string;
   payment_type: string;
   close_date: string;
@@ -97,12 +96,11 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
   const supabase = await createClient();
 
   // Lookup-Daten für diese Org laden
-  const [{ data: platforms }, { data: products }, { data: closers }, { data: partners }] =
+  const [{ data: platforms }, { data: products }, { data: closers }] =
     await Promise.all([
       supabase.from("platforms").select("id, name").eq("organization_id", session.organizationId),
       supabase.from("products").select("id, name").eq("organization_id", session.organizationId),
       supabase.from("closers").select("id, name").eq("organization_id", session.organizationId),
-      supabase.from("sales_partners").select("id, name").eq("organization_id", session.organizationId),
     ]);
 
   function findId(list: { id: string; name: string }[] | null, name: string | undefined): string | null {
@@ -145,7 +143,6 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
     const platform_id = findId(platforms, row.platform_name);
     const product_id = findId(products, row.product_name);
     const closer_id = findId(closers, row.closer_name);
-    const sales_partner_id = findId(partners, row.sales_partner_name);
 
     // ─── Prüfen ob Deal bereits existiert (anhand order_id) ─────────────────
     const order_id = row.order_id?.trim() || null;
@@ -170,7 +167,6 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
           platform_id,
           product_id,
           closer_id,
-          sales_partner_id,
           total_price,
           payment_type,
           close_date,
@@ -211,7 +207,6 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
           product_id,
           payment_method: row.payment_method?.trim() || null,
           closer_id,
-          sales_partner_id,
           total_price,
           payment_type,
           close_date,

@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { InstallmentToggle, OneTimeToggle } from "./_components/payment-toggle";
+import { AddInstallmentsForm } from "./_components/add-installments-form";
 
 export const metadata: Metadata = { title: "Deal — Buchhaltung" };
 
@@ -54,7 +55,7 @@ export default async function DealDetailPage({
   const { data: deal } = await supabase
     .from("deals")
     .select(
-      "*, platforms(name), products(name), closers(name), sales_partners(name)",
+      "*, platforms(name), products(name), closers(name)",
     )
     .eq("id", id)
     .eq("organization_id", session.organizationId)
@@ -123,7 +124,6 @@ export default async function DealDetailPage({
         <Row label="Plattform" value={d.platforms?.name} />
         <Row label="Zahlart" value={d.payment_method} />
         <Row label="Closer" value={d.closers?.name} />
-        <Row label="Vertriebspartner" value={d.sales_partners?.name} />
         <Row
           label="Gesamtpreis"
           value={
@@ -183,6 +183,15 @@ export default async function DealDetailPage({
             <OneTimeToggle dealId={id} paid={oneTime.paid} />
           </div>
         </div>
+      )}
+
+      {/* Raten nachtragen — für importierte Deals ohne Raten */}
+      {d.payment_type === "installments" && (!installments || installments.length === 0) && (
+        <AddInstallmentsForm
+          dealId={id}
+          totalPrice={d.total_price}
+          downPayment={d.down_payment ?? null}
+        />
       )}
 
       {/* Installments table */}

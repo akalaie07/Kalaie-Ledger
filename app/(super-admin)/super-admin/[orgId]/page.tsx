@@ -7,6 +7,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { getCurrentSession } from "@/lib/auth/get-current-org";
 import { toggleOrgFeature } from "@/lib/actions/super-admin";
 import { AVAILABLE_FEATURES } from "@/lib/features";
+import { ResetDataButton } from "./_components/reset-data-button";
 
 export const metadata: Metadata = { title: "Feature-Flags — Super-Admin" };
 
@@ -100,6 +101,25 @@ export default async function OrgFeaturesPage({
       <p className="text-xs text-muted-foreground">
         Änderungen werden sofort wirksam — betroffene User müssen die Seite neu laden.
       </p>
+
+      {/* ── Gefahrenzone ── */}
+      <div className="rounded-lg border border-red-900/40 overflow-hidden">
+        <div className="border-b border-red-900/30 bg-red-900/10 px-4 py-3">
+          <p className="text-sm font-medium text-red-400">Gefahrenzone</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Unwiderrufliche Aktionen für diese Organisation.
+          </p>
+        </div>
+        <div className="px-4 py-4 flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Alle Daten zurücksetzen</p>
+            <p className="text-xs text-muted-foreground">
+              Löscht alle Deals, Raten, Zahlungen und Import-Daten. Produkte, Plattformen und User bleiben erhalten.
+            </p>
+          </div>
+          <ResetDataButton orgId={org.id} orgName={org.name} />
+        </div>
+      </div>
     </div>
   );
 }

@@ -59,3 +59,54 @@ export async function toggleOrgFeature(
   revalidatePath("/super-admin");
   return {};
 }
+
+// ---------------------------------------------------------------------------
+// resetOrgData — Alle Geschäftsdaten einer Organisation löschen
+// Löscht: deals (+ installments, one_time_payments, inkasso_cases via CASCADE)
+//         import_batches (+ import_rows via CASCADE)
+// Behält: organizations, profiles, platforms, products, closers, sales_partners
+// ---------------------------------------------------------------------------
+
+export async function resetOrgData(
+  orgId: string,
+): Promise<{ error?: string; deleted?: { deals: number; batches: number } }> {
+  await requireSuperAdmin();
+  const supabase = createServiceClient();
+
+  // Deals zählen vor dem Löschen
+  const { count: dealCount } = await supabase
+    .from("deals")
+    .select("*", { count: "exact", head: true })
+    .eq("organization_id", orgId);
+
+  const { count: batchCount } = await supabase
+    .from("import_batches")
+    .select("*", { count: "exact", head: true })
+    .eq("organization_id", orgId);
+
+  // Deals löschen (installments, one_time_payments, inkasso_cases cascaden)
+  const { error: dealsErr } = await supabase
+    .from("deals")
+    .delete()
+    .eq("organization_id", orgId);
+
+  if (dealsErr) return { error: `Deals konnten nicht gelöscht werden: ${dealsErr.message}` };
+
+  // Import-Batches löschen (import_rows cascaden)
+  const { error: batchesErr } = await supabase
+    .from("import_batches")
+    .delete()
+    .eq("organization_id", orgId);
+
+  if (batchesErr) return { error: `Import-Daten konnten nicht gelöscht werden: ${batchesErr.message}` };
+
+  revalidatePath("/super-admin");
+  revalidatePath(`/super-admin/${orgId}`);
+
+  return {
+    deleted: {
+      deals: dealCount ?? 0,
+      batches: batchCount ?? 0,
+    },
+  };
+}

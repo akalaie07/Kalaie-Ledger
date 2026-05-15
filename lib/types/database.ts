@@ -355,6 +355,7 @@ export type Database = {
           close_date: string;
           inkasso_required: boolean;
           mahnung_required: boolean;
+          chargeback: boolean;
           onboarding_done: boolean;
           update_call_done: boolean;
           notes: string | null;
@@ -378,6 +379,7 @@ export type Database = {
           close_date: string;
           inkasso_required?: boolean;
           mahnung_required?: boolean;
+          chargeback?: boolean;
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
@@ -401,6 +403,7 @@ export type Database = {
           close_date?: string;
           inkasso_required?: boolean;
           mahnung_required?: boolean;
+          chargeback?: boolean;
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
