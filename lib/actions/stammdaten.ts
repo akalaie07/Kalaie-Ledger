@@ -134,7 +134,7 @@ const ProductSchema = z.object({
     z.number().nonnegative("Preis muss ≥ 0 sein.").nullable(),
   ),
   // Komma-separierte Liste von Zahlen, z. B. "129,1"
-  registration_fee_options_raw: z.string().optional().transform((v) => {
+  registration_fee_options_raw: z.string().optional().nullable().transform((v) => {
     if (!v) return [] as number[];
     return v
       .split(",")
