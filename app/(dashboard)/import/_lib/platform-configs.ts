@@ -48,15 +48,19 @@ export function autoDetectDigistore(headers: string[]): ColumnMap {
 }
 
 export function digistoreFilterPaid(row: Pick<EditableRow, "_rawStatus">): boolean {
-  const s = row._rawStatus.toLowerCase();
-  return (
-    s.includes("bezahlt") ||
-    s.includes("vollstaendig bezahlt") ||
-    s.includes("erfolgreich") ||
-    s === "abgeschlossen" ||
-    s.includes("paid") ||
-    s.includes("complete")
-  );
+  const s = row._rawStatus.toLowerCase().trim();
+  // Digistore liefert Snapshot-Daten. Alle Zeilen mit einem echten Transaktionsstatus
+  // anzeigen — der Nutzer kann irrelevante Zeilen im Edit-Schritt manuell entfernen.
+  //
+  // Eingeschlossen:
+  //   "Vollständig bezahlt"    → abgeschlossene Einmalzahlung / Raten
+  //   "Zahlungen aktiv"        → laufendes Abo oder Ratenmodell
+  //   "Zahlungen abgebrochen"  → storniert/Rückgabe — war in Buchhaltung relevant
+  //   "Mahnungen abgebrochen"  → Forderungsausfall, Chargeback
+  //   "Abgeschlossen" etc.     → generische Abschlüsse
+  //
+  // Ausgeschlossen: leere oder unbekannte Zeilen ohne erkennbaren Status.
+  return s.length > 0;
 }
 
 // =============================================================================

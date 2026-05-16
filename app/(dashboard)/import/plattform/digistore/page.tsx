@@ -107,9 +107,9 @@ export default async function DigistoreImportPage() {
             Bestellungen → CSV-Export
           </span>
           . Die CSV-Datei wird mit deutschen Spaltennamen (Bestell-ID, Vorname, Nachname, …)
-          automatisch erkannt. Es werden nur Zeilen mit Status{" "}
-          <span className="font-mono text-xs text-amber-200">"Bezahlt"</span> /
-          <span className="font-mono text-xs text-amber-200"> "Abgeschlossen"</span> importiert.
+          automatisch erkannt. Es werden alle Bestellzeilen angezeigt — egal ob bezahlt,
+          aktiv, abgebrochen oder Mahnung. Im Schritt „Prüfen" kannst du nicht relevante
+          Zeilen manuell entfernen.
         </p>
       </div>
 
