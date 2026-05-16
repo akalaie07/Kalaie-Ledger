@@ -17,7 +17,10 @@ export type LookupAction = (
   fd: FormData,
 ) => Promise<LookupActionState>;
 
-const PATH = "/einstellungen/stammdaten";
+const PATHS = ["/einstellungen/stammdaten", "/verwaltung/stammdaten"];
+function revalidateAll() {
+  for (const p of PATHS) revalidatePath(p);
+}
 
 // ---------------------------------------------------------------------------
 // Auth helper — returns { supabase, orgId } or { err }
@@ -69,7 +72,7 @@ export async function createPlatform(
     .insert({ organization_id: ctx.orgId, name: r.data.name });
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -91,7 +94,7 @@ export async function updatePlatform(
     .eq("organization_id", ctx.orgId);
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -109,7 +112,7 @@ export async function togglePlatform(
     .eq("organization_id", ctx.orgId);
 
   if (error) return { ok: false, error: error.message };
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -166,7 +169,7 @@ export async function createProduct(
     });
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -195,7 +198,7 @@ export async function updateProduct(
     .eq("organization_id", ctx.orgId);
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -213,7 +216,7 @@ export async function toggleProduct(
     .eq("organization_id", ctx.orgId);
 
   if (error) return { ok: false, error: error.message };
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -259,7 +262,7 @@ export async function createCloser(
   });
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -289,7 +292,7 @@ export async function updateCloser(
     .eq("organization_id", ctx.orgId);
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -307,7 +310,7 @@ export async function toggleCloser(
     .eq("organization_id", ctx.orgId);
 
   if (error) return { ok: false, error: error.message };
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -330,7 +333,7 @@ export async function deletePlatform(id: string): Promise<{ error?: string }> {
     .eq("id", id)
     .eq("organization_id", ctx.orgId);
   if (error) return deleteErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return {};
 }
 
@@ -343,7 +346,7 @@ export async function deleteProduct(id: string): Promise<{ error?: string }> {
     .eq("id", id)
     .eq("organization_id", ctx.orgId);
   if (error) return deleteErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return {};
 }
 
@@ -356,7 +359,7 @@ export async function deleteCloser(id: string): Promise<{ error?: string }> {
     .eq("id", id)
     .eq("organization_id", ctx.orgId);
   if (error) return deleteErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return {};
 }
 
@@ -369,7 +372,7 @@ export async function deleteSalesPartner(id: string): Promise<{ error?: string }
     .eq("id", id)
     .eq("organization_id", ctx.orgId);
   if (error) return deleteErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return {};
 }
 
@@ -399,7 +402,7 @@ export async function createSalesPartner(
   });
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -429,7 +432,7 @@ export async function updateSalesPartner(
     .eq("organization_id", ctx.orgId);
 
   if (error) return dupErr(error.code, error.message);
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
 
@@ -447,6 +450,6 @@ export async function toggleSalesPartner(
     .eq("organization_id", ctx.orgId);
 
   if (error) return { ok: false, error: error.message };
-  revalidatePath(PATH);
+  revalidateAll();
   return { ok: true };
 }
