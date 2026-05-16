@@ -78,6 +78,16 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   const initRegFeeCustom =
     initIsSubscription && initRegFeeChoice === "custom" ? initial.total_price : 0;
 
+  const initIsStandardWithOptions =
+    !initIsSubscription && initial.payment_type === "one_time" && initRegFeeOptions.length > 0;
+  const initPriceChoice = initIsStandardWithOptions
+    ? initRegFeeOptions.includes(initial.total_price)
+      ? String(initial.total_price)
+      : initial.total_price > 0
+      ? "custom"
+      : ""
+    : "";
+
   // ── Core state ──
   const [paymentModel, setPaymentModel] = useState<PaymentModel>(
     paymentTypeToModel(initial.payment_type),
@@ -110,6 +120,9 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   const [downPaymentDate, setDownPaymentDate] = useState(
     initHasAnzahlung ? (initial.one_time_due_date ?? "") : "",
   );
+
+  // ── Einmalkauf Preiswahl ──
+  const [priceChoice, setPriceChoice] = useState(initPriceChoice);
 
   // ── Abo ──
   const [regFeeChoice, setRegFeeChoice] = useState(initRegFeeChoice);
@@ -172,6 +185,9 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
 
     const savedPaymentMethod = ls("paymentMethod");
     if (savedPaymentMethod !== null) setPaymentMethod(savedPaymentMethod);
+
+    const savedPriceChoice = ls("priceChoice");
+    if (savedPriceChoice !== null) setPriceChoice(savedPriceChoice);
 
     const savedRegFeeChoice = ls("regFeeChoice");
     if (savedRegFeeChoice !== null) setRegFeeChoice(savedRegFeeChoice);
@@ -244,11 +260,23 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
         setPaymentModel("einmalig");
         lsSave("paymentModel", "einmalig");
       }
-      if (product?.default_price) {
-        setEinmaligBetrag(product.default_price);
-        lsSave("einmaligBetrag", String(product.default_price));
-        setGesamtbetrag(product.default_price);
-        lsSave("gesamtbetrag", String(product.default_price));
+      const opts = product?.registration_fee_options ?? [];
+      if (opts.length > 0) {
+        setPriceChoice(String(opts[0]));
+        lsSave("priceChoice", String(opts[0]));
+        setEinmaligBetrag(opts[0]);
+        lsSave("einmaligBetrag", String(opts[0]));
+        setGesamtbetrag(opts[0]);
+        lsSave("gesamtbetrag", String(opts[0]));
+      } else {
+        setPriceChoice("");
+        lsSave("priceChoice", "");
+        if (product?.default_price) {
+          setEinmaligBetrag(product.default_price);
+          lsSave("einmaligBetrag", String(product.default_price));
+          setGesamtbetrag(product.default_price);
+          lsSave("gesamtbetrag", String(product.default_price));
+        }
       }
     }
   }
@@ -434,18 +462,59 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                     <td className="px-4 py-3 text-muted-foreground">
                       Betrag <span className="text-destructive">*</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        type="number" min="0" step="0.01" placeholder="0,00"
-                        value={einmaligBetrag || ""}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value) || 0;
-                          setEinmaligBetrag(v);
-                          lsSave("einmaligBetrag", String(v));
-                        }}
-                        className="h-8 text-sm"
-                        aria-invalid={!!fe.total_price}
-                      />
+                    <td className="px-4 py-3 space-y-2">
+                      {regFeeOptions.length > 0 ? (
+                        <>
+                          <select
+                            value={priceChoice}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setPriceChoice(v);
+                              lsSave("priceChoice", v);
+                              if (v !== "custom" && v !== "") {
+                                const n = parseFloat(v);
+                                setEinmaligBetrag(n);
+                                lsSave("einmaligBetrag", String(n));
+                              }
+                              if (v === "") {
+                                setEinmaligBetrag(0);
+                                lsSave("einmaligBetrag", "0");
+                              }
+                            }}
+                            className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          >
+                            <option value="">— keine Auswahl —</option>
+                            {regFeeOptions.map((fee) => (
+                              <option key={fee} value={String(fee)}>{fmt(fee)}</option>
+                            ))}
+                            <option value="custom">Benutzerdefiniert…</option>
+                          </select>
+                          {priceChoice === "custom" && (
+                            <Input
+                              type="number" min="0" step="0.01" placeholder="0,00"
+                              value={einmaligBetrag || ""}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value) || 0;
+                                setEinmaligBetrag(v);
+                                lsSave("einmaligBetrag", String(v));
+                              }}
+                              className="h-8 text-sm"
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <Input
+                          type="number" min="0" step="0.01" placeholder="0,00"
+                          value={einmaligBetrag || ""}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value) || 0;
+                            setEinmaligBetrag(v);
+                            lsSave("einmaligBetrag", String(v));
+                          }}
+                          className="h-8 text-sm"
+                          aria-invalid={!!fe.total_price}
+                        />
+                      )}
                       <FieldError msg={fe.total_price?.[0]} />
                     </td>
                   </tr>
