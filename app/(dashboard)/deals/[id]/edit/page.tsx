@@ -21,7 +21,7 @@ export default async function DealEditPage({
   const session = await requireRole("admin");
   const supabase = await createClient();
 
-  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: oneTime }] =
+  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: oneTime }, { data: installments }] =
     await Promise.all([
       supabase
         .from("deals")
@@ -52,6 +52,11 @@ export default async function DealEditPage({
         .select("due_date")
         .eq("deal_id", id)
         .maybeSingle(),
+      supabase
+        .from("installments")
+        .select("amount, due_date, sequence")
+        .eq("deal_id", id)
+        .order("sequence"),
     ]);
 
   if (!deal) notFound();
@@ -95,6 +100,9 @@ export default async function DealEditPage({
           one_time_due_date: oneTime?.due_date ?? null,
           recurring_amount: (deal as { recurring_amount?: number | null }).recurring_amount ?? null,
           subscription_start_date: (deal as { subscription_start_date?: string | null }).subscription_start_date ?? null,
+          inst_amount: installments?.[0]?.amount ?? null,
+          inst_count: installments?.length ?? null,
+          first_due_date: installments?.[0]?.due_date ?? null,
         }}
       />
 

@@ -234,7 +234,7 @@ export async function createDeal(
       await supabase.from("one_time_payments").insert({
         deal_id: deal.id,
         organization_id: session.organizationId,
-        due_date: first_due_date,
+        due_date: one_time_due_date ?? null, // Anzahlungsdatum aus dem Formular
       });
     }
   }

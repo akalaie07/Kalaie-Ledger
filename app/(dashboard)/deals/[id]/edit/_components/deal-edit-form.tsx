@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 
 interface Option { id: string; name: string }
 
+type PaymentModel = "einmalig" | "ratenzahlung" | "abo";
+
 interface DealEditFormProps {
   dealId: string;
   platforms: Option[];
@@ -36,6 +38,9 @@ interface DealEditFormProps {
     one_time_due_date: string | null;
     recurring_amount: number | null;
     subscription_start_date: string | null;
+    inst_amount: number | null;
+    inst_count: number | null;
+    first_due_date: string | null;
   };
 }
 
@@ -44,103 +49,205 @@ function FieldError({ msg }: { msg?: string }) {
   return <p className="text-xs text-destructive">{msg}</p>;
 }
 
-function FormSelect({
-  name,
-  label,
-  options,
-  defaultValue,
-  error,
-}: {
-  name: string;
-  label: string;
-  options: Option[];
-  defaultValue?: string | null;
-  error?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={name}>{label}</Label>
-      <select
-        id={name}
-        name={name}
-        defaultValue={defaultValue ?? ""}
-        className={cn(
-          "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          error && "border-destructive",
-        )}
-      >
-        <option value="">— keine —</option>
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>{o.name}</option>
-        ))}
-      </select>
-      <FieldError msg={error} />
-    </div>
-  );
+const fmt = (v: number) =>
+  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
+
+function paymentTypeToModel(pt: string): PaymentModel {
+  if (pt === "installments") return "ratenzahlung";
+  if (pt === "subscription_monthly" || pt === "subscription_yearly") return "abo";
+  return "einmalig";
 }
 
-export function DealEditForm({
-  dealId,
-  platforms,
-  products,
-  closers,
-  initial,
-}: DealEditFormProps) {
+export function DealEditForm({ dealId, platforms, products, closers, initial }: DealEditFormProps) {
   const updateDealWithId = updateDeal.bind(null, dealId);
-  const [state, action, pending] = useActionState<DealFormState, FormData>(
-    updateDealWithId,
-    null,
-  );
+  const [state, action, pending] = useActionState<DealFormState, FormData>(updateDealWithId, null);
+
+  // Derive init helpers
   const initialProduct = products.find((p) => p.id === initial.product_id);
-  const [selectedProductId, setSelectedProductId] = useState<string>(initial.product_id ?? "");
+  const initIsSubscription =
+    initial.payment_type === "subscription_monthly" ||
+    initial.payment_type === "subscription_yearly";
+  const initHasAnzahlung = (initial.down_payment ?? 0) > 0;
+  const initRegFeeOptions = initialProduct?.registration_fee_options ?? [];
+  const initRegFeeChoice =
+    initIsSubscription && initial.total_price > 0
+      ? initRegFeeOptions.includes(initial.total_price)
+        ? String(initial.total_price)
+        : "custom"
+      : "";
+  const initRegFeeCustom =
+    initIsSubscription && initRegFeeChoice === "custom" ? initial.total_price : 0;
+
+  // ── Core state ──
+  const [paymentModel, setPaymentModel] = useState<PaymentModel>(
+    paymentTypeToModel(initial.payment_type),
+  );
+  const [selectedProductId, setSelectedProductId] = useState(initial.product_id ?? "");
   const [selectedProductType, setSelectedProductType] = useState<ProductOption["product_type"]>(
     initialProduct?.product_type ?? "standard",
   );
-  const [paymentType, setPaymentType] = useState<"one_time" | "installments" | "subscription_monthly" | "subscription_yearly">(initial.payment_type);
-  const [hasAnzahlung, setHasAnzahlung] = useState(initial.down_payment != null);
-  const [totalPrice, setTotalPrice] = useState(initial.total_price);
+
+  // ── Einmalzahlung ──
+  const [einmaligBetrag, setEinmaligBetrag] = useState(
+    initial.payment_type === "one_time" ? initial.total_price : 0,
+  );
+  const [einmaligFaellig, setEinmaligFaellig] = useState(
+    initial.payment_type === "one_time" && !initHasAnzahlung
+      ? (initial.one_time_due_date ?? "")
+      : "",
+  );
+
+  // ── Ratenzahlung ──
+  const [ratePerPeriod, setRatePerPeriod] = useState(initial.inst_amount ?? 0);
+  const [numberOfRates, setNumberOfRates] = useState(initial.inst_count ?? 0);
+  const [firstDueDate, setFirstDueDate] = useState(initial.first_due_date ?? "");
+
+  // ── Anzahlung (shared EZ + Raten) ──
+  const [hasAnzahlung, setHasAnzahlung] = useState(initHasAnzahlung);
   const [downPayment, setDownPayment] = useState(initial.down_payment ?? 0);
-  const [numberOfRates, setNumberOfRates] = useState(0);
-  const [closeDate, setCloseDate] = useState<string>(initial.close_date);
-  const [recurringAmount, setRecurringAmount] = useState<number>(initial.recurring_amount ?? 0);
-  const [subscriptionStart, setSubscriptionStart] = useState<string>(initial.subscription_start_date ?? "");
+  const [downPaymentDate, setDownPaymentDate] = useState(
+    initHasAnzahlung ? (initial.one_time_due_date ?? "") : "",
+  );
 
-  // Letztes eingegebenes Datum aus localStorage laden (pro Deal-ID)
+  // ── Abo ──
+  const [regFeeChoice, setRegFeeChoice] = useState(initRegFeeChoice);
+  const [regFeeCustom, setRegFeeCustom] = useState(initRegFeeCustom);
+  const [recurringAmount, setRecurringAmount] = useState(initial.recurring_amount ?? 0);
+  const [subscriptionStart, setSubscriptionStart] = useState(
+    initial.subscription_start_date ?? "",
+  );
+
+  // ── Shared ──
+  const [closeDate, setCloseDate] = useState(initial.close_date);
+  const [closerId, setCloserId] = useState(initial.closer_id ?? "");
+  const [paymentMethod, setPaymentMethod] = useState(initial.payment_method ?? "");
+
+  // ── localStorage: load per-dealId draft on mount ──
   useEffect(() => {
-    const key = `kalaie_edit_close_date_${dealId}`;
-    const saved = localStorage.getItem(key);
-    if (saved) setCloseDate(saved);
-  }, [dealId]);
+    const ls = (key: string) => localStorage.getItem(`kalaie_edit_${dealId}_${key}`);
 
-  function handleCloseDateChange(val: string) {
-    setCloseDate(val);
-    if (val) localStorage.setItem(`kalaie_edit_close_date_${dealId}`, val);
+    const savedCloseDate = ls("closeDate");
+    if (savedCloseDate) setCloseDate(savedCloseDate);
+
+    const savedCloserId = ls("closerId");
+    if (savedCloserId !== null && (savedCloserId === "" || closers.some((c) => c.id === savedCloserId))) {
+      setCloserId(savedCloserId);
+    }
+
+    const savedModel = ls("paymentModel") as PaymentModel | null;
+    if (savedModel && ["einmalig", "ratenzahlung", "abo"].includes(savedModel))
+      setPaymentModel(savedModel);
+
+    const savedEinmaligBetrag = ls("einmaligBetrag");
+    if (savedEinmaligBetrag) setEinmaligBetrag(parseFloat(savedEinmaligBetrag));
+
+    const savedEinmaligFaellig = ls("einmaligFaellig");
+    if (savedEinmaligFaellig !== null) setEinmaligFaellig(savedEinmaligFaellig);
+
+    const savedRatePerPeriod = ls("ratePerPeriod");
+    if (savedRatePerPeriod) setRatePerPeriod(parseFloat(savedRatePerPeriod));
+
+    const savedNumberOfRates = ls("numberOfRates");
+    if (savedNumberOfRates) setNumberOfRates(parseInt(savedNumberOfRates));
+
+    const savedFirstDueDate = ls("firstDueDate");
+    if (savedFirstDueDate !== null) setFirstDueDate(savedFirstDueDate);
+
+    const savedHasAnzahlung = ls("hasAnzahlung");
+    if (savedHasAnzahlung !== null) setHasAnzahlung(savedHasAnzahlung === "true");
+
+    const savedDownPayment = ls("downPayment");
+    if (savedDownPayment) setDownPayment(parseFloat(savedDownPayment));
+
+    const savedDownPaymentDate = ls("downPaymentDate");
+    if (savedDownPaymentDate !== null) setDownPaymentDate(savedDownPaymentDate);
+
+    const savedRecurringAmount = ls("recurringAmount");
+    if (savedRecurringAmount) setRecurringAmount(parseFloat(savedRecurringAmount));
+
+    const savedSubscriptionStart = ls("subscriptionStart");
+    if (savedSubscriptionStart !== null) setSubscriptionStart(savedSubscriptionStart);
+
+    const savedPaymentMethod = ls("paymentMethod");
+    if (savedPaymentMethod !== null) setPaymentMethod(savedPaymentMethod);
+
+    const savedRegFeeChoice = ls("regFeeChoice");
+    if (savedRegFeeChoice !== null) setRegFeeChoice(savedRegFeeChoice);
+
+    const savedRegFeeCustom = ls("regFeeCustom");
+    if (savedRegFeeCustom) setRegFeeCustom(parseFloat(savedRegFeeCustom));
+  }, [dealId, closers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function lsSave(key: string, value: string) {
+    localStorage.setItem(`kalaie_edit_${dealId}_${key}`, value);
   }
 
-  const isSubscription = paymentType === "subscription_monthly" || paymentType === "subscription_yearly";
+  // ── Derived ──
+  const isSubscription =
+    selectedProductType === "subscription_monthly" ||
+    selectedProductType === "subscription_yearly";
 
+  const selectedProduct = products.find((p) => p.id === selectedProductId);
+  const regFeeOptions = selectedProduct?.registration_fee_options ?? [];
+
+  const effectiveRegFee =
+    regFeeChoice === "custom"
+      ? regFeeCustom
+      : regFeeChoice !== ""
+      ? parseFloat(regFeeChoice)
+      : 0;
+
+  // ── Computed hidden inputs ──
+  const computedPaymentType = (() => {
+    if (paymentModel === "abo" && isSubscription) return selectedProductType;
+    if (paymentModel === "ratenzahlung") return "installments";
+    return "one_time";
+  })();
+
+  const computedTotalPrice = (() => {
+    if (paymentModel === "abo" && isSubscription) return effectiveRegFee;
+    if (paymentModel === "ratenzahlung")
+      return ratePerPeriod * numberOfRates + (hasAnzahlung ? downPayment : 0);
+    return einmaligBetrag;
+  })();
+
+  const computedOneTimeDueDate = (() => {
+    if (paymentModel === "abo") return null;
+    if (hasAnzahlung) return downPaymentDate || null;
+    if (paymentModel === "einmalig") return einmaligFaellig || null;
+    return null;
+  })();
+
+  // ── Product change handler ──
   function handleProductChange(productId: string) {
     setSelectedProductId(productId);
     const product = products.find((p) => p.id === productId);
-    const type = product?.product_type ?? "standard";
-    setSelectedProductType(type);
-    if (type === "subscription_monthly") {
-      setPaymentType("subscription_monthly");
-      if (product?.default_recurring_price) setRecurringAmount(product.default_recurring_price);
-    } else if (type === "subscription_yearly") {
-      setPaymentType("subscription_yearly");
-      if (product?.default_recurring_price) setRecurringAmount(product.default_recurring_price);
-    } else if (paymentType === "subscription_monthly" || paymentType === "subscription_yearly") {
-      setPaymentType("one_time");
+    const pt = product?.product_type ?? "standard";
+    setSelectedProductType(pt);
+
+    if (pt === "subscription_monthly" || pt === "subscription_yearly") {
+      setPaymentModel("abo");
+      lsSave("paymentModel", "abo");
+      if (product?.default_recurring_price) {
+        setRecurringAmount(product.default_recurring_price);
+        lsSave("recurringAmount", String(product.default_recurring_price));
+      }
+      if ((product?.registration_fee_options ?? []).length > 0) {
+        const firstFee = String(product!.registration_fee_options[0]);
+        setRegFeeChoice(firstFee);
+        lsSave("regFeeChoice", firstFee);
+      }
+    } else if (paymentModel === "abo") {
+      setPaymentModel("einmalig");
+      lsSave("paymentModel", "einmalig");
     }
   }
 
-  const ratenLabel = "Anzahl Raten";
-
-  function fmtPreview(v: number) {
-    return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
-  }
+  const tabs: { value: PaymentModel; label: string; disabled: boolean }[] = [
+    { value: "einmalig", label: "Einmalzahlung", disabled: isSubscription },
+    { value: "ratenzahlung", label: "Ratenzahlung", disabled: isSubscription },
+    { value: "abo", label: "Abo / Wiederkehrend", disabled: !isSubscription },
+  ];
 
   const fe = state?.fieldErrors ?? {};
 
@@ -152,13 +259,17 @@ export function DealEditForm({
         </p>
       )}
 
-      {/* Kerndaten */}
+      {/* ── Kerndaten ── */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Kerndaten</h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Kerndaten
+        </h2>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="customer_name">Kunde <span className="text-destructive">*</span></Label>
+            <Label htmlFor="customer_name">
+              Kunde <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="customer_name"
               name="customer_name"
@@ -168,7 +279,6 @@ export function DealEditForm({
             />
             <FieldError msg={fe.customer_name?.[0]} />
           </div>
-
           <div className="space-y-1.5">
             <Label htmlFor="order_id">Bestell-ID</Label>
             <Input id="order_id" name="order_id" defaultValue={initial.order_id ?? ""} />
@@ -176,7 +286,6 @@ export function DealEditForm({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          {/* Produkt — controlled, damit Zahlungsart sich automatisch anpasst */}
           <div className="space-y-1.5">
             <Label htmlFor="product_id">Produkt</Label>
             <select
@@ -187,249 +296,551 @@ export function DealEditForm({
               className={cn(
                 "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                fe.product_id && "border-destructive",
               )}
             >
               <option value="">— keine —</option>
-              {products.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <FieldError msg={fe.product_id?.[0]} />
           </div>
-          <FormSelect
-            name="platform_id"
-            label="Plattform"
-            options={platforms}
-            defaultValue={initial.platform_id}
-            error={fe.platform_id?.[0]}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="payment_method">Zahlart</Label>
-          <Input
-            id="payment_method"
-            name="payment_method"
-            placeholder="z.B. Überweisung, Kreditkarte, PayPal"
-            defaultValue={initial.payment_method ?? ""}
-          />
+          <div className="space-y-1.5">
+            <Label htmlFor="platform_id">Plattform</Label>
+            <select
+              id="platform_id"
+              name="platform_id"
+              defaultValue={initial.platform_id ?? ""}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">— keine —</option>
+              {platforms.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </section>
 
-      {/* Preise & Zahlung */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Preise & Zahlung</h2>
+      {/* ── Preise & Zahlung ── */}
+      <section className="space-y-5">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Preise & Zahlung
+        </h2>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="total_price">Gesamtpreis (€) <span className="text-destructive">*</span></Label>
-            <Input
-              id="total_price"
-              name="total_price"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-              value={totalPrice}
-              onChange={(e) => setTotalPrice(parseFloat(e.target.value) || 0)}
-              aria-invalid={!!fe.total_price}
-            />
-            <FieldError msg={fe.total_price?.[0]} />
-          </div>
+        {/* Hidden computed fields */}
+        <input type="hidden" name="payment_type" value={computedPaymentType} />
+        <input type="hidden" name="total_price" value={computedTotalPrice || 0} />
+        {hasAnzahlung && paymentModel !== "abo" && downPayment > 0 && (
+          <input type="hidden" name="down_payment" value={downPayment} />
+        )}
+        {computedOneTimeDueDate && (
+          <input type="hidden" name="one_time_due_date" value={computedOneTimeDueDate} />
+        )}
+        {paymentModel === "abo" && isSubscription && (
+          <>
+            <input type="hidden" name="recurring_amount" value={recurringAmount || 0} />
+            {subscriptionStart && (
+              <input type="hidden" name="subscription_start_date" value={subscriptionStart} />
+            )}
+          </>
+        )}
+        {paymentModel === "abo" && (
+          <input type="hidden" name="payment_method" value={paymentMethod} />
+        )}
 
+        {/* Abschlussdatum */}
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="close_date">Abschlussdatum <span className="text-destructive">*</span></Label>
+            <Label htmlFor="close_date">
+              Abschlussdatum <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="close_date"
               name="close_date"
               type="date"
               required
               value={closeDate}
-              onChange={(e) => handleCloseDateChange(e.target.value)}
+              onChange={(e) => {
+                setCloseDate(e.target.value);
+                lsSave("closeDate", e.target.value);
+              }}
               aria-invalid={!!fe.close_date}
             />
             <FieldError msg={fe.close_date?.[0]} />
           </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="payment_type">Zahlungsart <span className="text-destructive">*</span></Label>
-            {isSubscription ? (
-              <>
-                <div className="rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm text-violet-300">
-                  {paymentType === "subscription_monthly" ? "Abo — Monatlich" : "Abo — Jährlich"}
-                </div>
-                <input type="hidden" name="payment_type" value={paymentType} />
-              </>
-            ) : (
-              <select
-                id="payment_type"
-                name="payment_type"
-                value={paymentType}
-                onChange={(e) => setPaymentType(e.target.value as "one_time" | "installments")}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="one_time">Einmalzahlung</option>
-                <option value="installments">Ratenzahlung</option>
-              </select>
-            )}
-          </div>
         </div>
 
-        {/* Anzahlung */}
-        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={hasAnzahlung}
-              onChange={(e) => setHasAnzahlung(e.target.checked)}
-              className="h-4 w-4 rounded border-input accent-primary"
-            />
-            Anzahlung geleistet
-          </label>
-
-          {hasAnzahlung && (
-            <div className="space-y-1.5">
-              <Label htmlFor="down_payment">
-                Höhe der Anzahlung (€) <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="down_payment"
-                name="down_payment"
-                type="number"
-                min="0"
-                step="0.01"
-                value={downPayment || ""}
-                onChange={(e) => setDownPayment(parseFloat(e.target.value) || 0)}
-                aria-invalid={!!fe.down_payment}
-              />
-              <FieldError msg={fe.down_payment?.[0]} />
-            </div>
+        {/* Zahlungsmodell-Tabs */}
+        <div className="space-y-2">
+          <Label>
+            Zahlungsmodell <span className="text-destructive">*</span>
+          </Label>
+          <div className="grid grid-cols-3 gap-2">
+            {tabs.map(({ value, label, disabled }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  if (!disabled) {
+                    setPaymentModel(value);
+                    lsSave("paymentModel", value);
+                  }
+                }}
+                disabled={disabled}
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+                  paymentModel === value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : disabled
+                    ? "border-border/30 text-muted-foreground/30 cursor-not-allowed"
+                    : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {isSubscription && (
+            <p className="text-xs text-muted-foreground">
+              Abo-Typ wird automatisch durch das gewählte Produkt bestimmt.
+            </p>
           )}
         </div>
 
-        {/* Abo-Konfiguration */}
-        {isSubscription && (
-          <div className="space-y-4 rounded-lg border border-violet-500/30 bg-violet-500/5 p-4">
-            <p className="text-xs font-medium text-violet-400 uppercase tracking-wide">Abo-Konfiguration</p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="recurring_amount">
-                  {paymentType === "subscription_monthly" ? "Monatlicher Betrag (€)" : "Jährlicher Betrag (€)"}
-                </Label>
-                <Input
-                  id="recurring_amount"
-                  name="recurring_amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={recurringAmount || ""}
-                  onChange={(e) => setRecurringAmount(parseFloat(e.target.value) || 0)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="subscription_start_date">Abo-Start</Label>
-                <Input
-                  id="subscription_start_date"
-                  name="subscription_start_date"
-                  type="date"
-                  value={subscriptionStart}
-                  onChange={(e) => setSubscriptionStart(e.target.value)}
-                />
-              </div>
+        {/* ── Einmalzahlung ── */}
+        {paymentModel === "einmalig" && (
+          <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-4">
+            <h3 className="text-sm font-semibold">Einmalige Zahlung</h3>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 border-b border-border">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-[40%]">Feld</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Wert</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      Betrag <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number" min="0" step="0.01" placeholder="0,00"
+                        value={einmaligBetrag || ""}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setEinmaligBetrag(v);
+                          lsSave("einmaligBetrag", String(v));
+                        }}
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.total_price}
+                      />
+                      <FieldError msg={fe.total_price?.[0]} />
+                    </td>
+                  </tr>
+                  {!hasAnzahlung && (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">Fällig am</td>
+                      <td className="px-4 py-3">
+                        <Input
+                          type="date"
+                          value={einmaligFaellig}
+                          onChange={(e) => {
+                            setEinmaligFaellig(e.target.value);
+                            lsSave("einmaligFaellig", e.target.value);
+                          }}
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Zahlart</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        name="payment_method"
+                        placeholder="z.B. Überweisung, Kreditkarte"
+                        value={paymentMethod}
+                        onChange={(e) => {
+                          setPaymentMethod(e.target.value);
+                          lsSave("paymentMethod", e.target.value);
+                        }}
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Anzahlung</td>
+                    <td className="px-4 py-3">
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hasAnzahlung}
+                          onChange={(e) => {
+                            setHasAnzahlung(e.target.checked);
+                            lsSave("hasAnzahlung", String(e.target.checked));
+                          }}
+                          className="h-4 w-4 rounded border-input accent-primary"
+                        />
+                        Anzahlung geleistet
+                      </label>
+                    </td>
+                  </tr>
+                  {hasAnzahlung && (
+                    <>
+                      <tr>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          Anzahlungsbetrag <span className="text-destructive">*</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number" min="0" step="0.01" placeholder="0,00"
+                            value={downPayment || ""}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value) || 0;
+                              setDownPayment(v);
+                              lsSave("downPayment", String(v));
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 text-muted-foreground">Anzahlung fällig am</td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="date"
+                            value={downPaymentDate}
+                            onChange={(e) => {
+                              setDownPaymentDate(e.target.value);
+                              lsSave("downPaymentDate", e.target.value);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Gesamtpreis (oben) = Anmeldegebühr. Abo-Betrag wird separat nachverfolgt.
-            </p>
+            {einmaligBetrag > 0 && (
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-4 py-2.5">
+                <span className="text-sm text-muted-foreground">Gesamtpreis</span>
+                <span className="font-semibold tabular-nums">{fmt(einmaligBetrag)}</span>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Fälligkeitsdatum Einmalzahlung */}
-        {paymentType === "one_time" && (
-          <div className="space-y-1.5">
-            <Label htmlFor="one_time_due_date">Zahlung fällig zum</Label>
-            <Input
-              id="one_time_due_date"
-              name="one_time_due_date"
-              type="date"
-              defaultValue={initial.one_time_due_date ?? ""}
-              aria-invalid={!!fe.one_time_due_date}
-            />
-            <FieldError msg={fe.one_time_due_date?.[0]} />
-          </div>
-        )}
-
-        {/* Raten-Felder — nur für echte Ratenzahlung, nicht Abo */}
-        {paymentType === "installments" && (
-          <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="number_of_rates">{ratenLabel}</Label>
-                <Input
-                  id="number_of_rates"
-                  name="number_of_rates"
-                  type="number"
-                  min={isSubscription ? "1" : "2"}
-                  value={numberOfRates || ""}
-                  onChange={(e) => setNumberOfRates(parseInt(e.target.value) || 0)}
-                  aria-invalid={!!fe.number_of_rates}
-                  placeholder="z.B. 3"
-                />
-                <FieldError msg={fe.number_of_rates?.[0]} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="first_due_date">Erstes Fälligkeitsdatum</Label>
-                <Input
-                  id="first_due_date"
-                  name="first_due_date"
-                  type="date"
-                  aria-invalid={!!fe.first_due_date}
-                />
-                <FieldError msg={fe.first_due_date?.[0]} />
-              </div>
+        {/* ── Ratenzahlung ── */}
+        {paymentModel === "ratenzahlung" && (
+          <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-4">
+            <h3 className="text-sm font-semibold">Ratenzahlung</h3>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 border-b border-border">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-[40%]">Feld</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Wert</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      Betrag pro Rate <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number" min="0" step="0.01" placeholder="0,00"
+                        value={ratePerPeriod || ""}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setRatePerPeriod(v);
+                          lsSave("ratePerPeriod", String(v));
+                        }}
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.total_price}
+                      />
+                      <FieldError msg={fe.total_price?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      Anzahl Raten <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        name="number_of_rates"
+                        type="number" min="1" placeholder="z.B. 3"
+                        value={numberOfRates || ""}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value) || 0;
+                          setNumberOfRates(v);
+                          lsSave("numberOfRates", String(v));
+                        }}
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.number_of_rates}
+                      />
+                      <FieldError msg={fe.number_of_rates?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      Erstes Fälligkeitsdatum <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        name="first_due_date"
+                        type="date"
+                        value={firstDueDate}
+                        onChange={(e) => {
+                          setFirstDueDate(e.target.value);
+                          lsSave("firstDueDate", e.target.value);
+                        }}
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.first_due_date}
+                      />
+                      <FieldError msg={fe.first_due_date?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Zahlart / Kündigungsfrist</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        name="payment_method"
+                        placeholder="z.B. Monatlich kündbar"
+                        value={paymentMethod}
+                        onChange={(e) => {
+                          setPaymentMethod(e.target.value);
+                          lsSave("paymentMethod", e.target.value);
+                        }}
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Anzahlung</td>
+                    <td className="px-4 py-3">
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hasAnzahlung}
+                          onChange={(e) => {
+                            setHasAnzahlung(e.target.checked);
+                            lsSave("hasAnzahlung", String(e.target.checked));
+                          }}
+                          className="h-4 w-4 rounded border-input accent-primary"
+                        />
+                        Anzahlung geleistet
+                      </label>
+                    </td>
+                  </tr>
+                  {hasAnzahlung && (
+                    <>
+                      <tr>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          Anzahlungsbetrag <span className="text-destructive">*</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number" min="0" step="0.01" placeholder="0,00"
+                            value={downPayment || ""}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value) || 0;
+                              setDownPayment(v);
+                              lsSave("downPayment", String(v));
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 text-muted-foreground">Anzahlung fällig am</td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="date"
+                            value={downPaymentDate}
+                            onChange={(e) => {
+                              setDownPaymentDate(e.target.value);
+                              lsSave("downPaymentDate", e.target.value);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Nur ausfüllen, um bestehende Raten neu zu generieren.
-            </p>
-            {totalPrice > 0 && numberOfRates >= 2 && (
-              (() => {
-                const dp = hasAnzahlung ? downPayment : 0;
-                const base = totalPrice - dp;
-                const perRate = base > 0 ? base / numberOfRates : 0;
-                return (
-                  <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
-                    <p className="font-medium text-blue-300 mb-1">Ratenvorschau (Neuberechnung)</p>
-                    <p className="text-blue-200/80">
-                      {fmtPreview(base)} ÷ {numberOfRates} Raten ={" "}
-                      <span className="font-semibold text-blue-100 text-base">{fmtPreview(perRate)} pro Rate</span>
+
+            {ratePerPeriod > 0 && numberOfRates >= 1 && (
+              <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
+                <p className="font-medium text-blue-300 mb-1">Vorschau</p>
+                <div className="space-y-0.5 text-blue-200/80">
+                  <p>
+                    {fmt(ratePerPeriod)} × {numberOfRates} Raten ={" "}
+                    <span className="font-semibold text-blue-100">{fmt(ratePerPeriod * numberOfRates)}</span>
+                  </p>
+                  {hasAnzahlung && downPayment > 0 && (
+                    <p>
+                      + {fmt(downPayment)} Anzahlung ={" "}
+                      <span className="font-semibold text-blue-100 text-base">{fmt(computedTotalPrice)}</span>{" "}
+                      Gesamt
                     </p>
-                  </div>
-                );
-              })()
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Abo ── */}
+        {paymentModel === "abo" && isSubscription && (
+          <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 p-4 space-y-4">
+            <h3 className="text-sm font-semibold text-violet-300">
+              {selectedProductType === "subscription_monthly" ? "Monatliches Abo" : "Jährliches Abo"}
+            </h3>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 border-b border-border">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-[40%]">Feld</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Wert</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Anmeldegebühr</td>
+                    <td className="px-4 py-3 space-y-2">
+                      <select
+                        value={regFeeChoice}
+                        onChange={(e) => {
+                          setRegFeeChoice(e.target.value);
+                          lsSave("regFeeChoice", e.target.value);
+                        }}
+                        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="">— keine / 0 € —</option>
+                        {regFeeOptions.map((fee) => (
+                          <option key={fee} value={String(fee)}>{fmt(fee)}</option>
+                        ))}
+                        <option value="custom">Benutzerdefiniert…</option>
+                      </select>
+                      {regFeeChoice === "custom" && (
+                        <Input
+                          type="number" min="0" step="0.01" placeholder="Betrag in €"
+                          value={regFeeCustom || ""}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value) || 0;
+                            setRegFeeCustom(v);
+                            lsSave("regFeeCustom", String(v));
+                          }}
+                          className="h-8 text-sm"
+                        />
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {selectedProductType === "subscription_monthly" ? "Monatlicher Betrag" : "Jährlicher Betrag"}{" "}
+                      <span className="text-destructive">*</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number" min="0" step="0.01" placeholder="0,00"
+                        value={recurringAmount || ""}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setRecurringAmount(v);
+                          lsSave("recurringAmount", String(v));
+                        }}
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Abo-Start</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="date"
+                        value={subscriptionStart}
+                        onChange={(e) => {
+                          setSubscriptionStart(e.target.value);
+                          lsSave("subscriptionStart", e.target.value);
+                        }}
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {(effectiveRegFee > 0 || recurringAmount > 0) && (
+              <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm">
+                <p className="font-medium text-violet-300 mb-1">Vorschau</p>
+                <div className="space-y-0.5 text-violet-200/80">
+                  {effectiveRegFee > 0 && (
+                    <p>
+                      Anmeldegebühr:{" "}
+                      <span className="font-semibold text-violet-100">{fmt(effectiveRegFee)}</span>
+                    </p>
+                  )}
+                  {recurringAmount > 0 && (
+                    <p>
+                      + {fmt(recurringAmount)}/
+                      {selectedProductType === "subscription_monthly" ? "Monat" : "Jahr"}{" "}
+                      <span className="text-violet-300/60">(monatlich kündbar)</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {effectiveRegFee > 0 && (
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-4 py-2.5">
+                <span className="text-sm text-muted-foreground">Anmeldegebühr</span>
+                <span className="font-semibold tabular-nums">{fmt(effectiveRegFee)}</span>
+              </div>
             )}
           </div>
         )}
       </section>
 
-      {/* Team */}
+      {/* ── Team ── */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Team</h2>
-
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Team
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormSelect
-            name="closer_id"
-            label="Closer"
-            options={closers}
-            defaultValue={initial.closer_id}
-            error={fe.closer_id?.[0]}
-          />
+          <div className="space-y-1.5">
+            <Label htmlFor="closer_id">Closer</Label>
+            <select
+              id="closer_id"
+              name="closer_id"
+              value={closerId}
+              onChange={(e) => {
+                setCloserId(e.target.value);
+                lsSave("closerId", e.target.value);
+              }}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">— keine —</option>
+              {closers.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <FieldError msg={fe.closer_id?.[0]} />
+          </div>
         </div>
       </section>
 
-      {/* Status */}
+      {/* ── Status ── */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Status</h2>
-
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Status
+        </h2>
         <div className="flex flex-wrap gap-6">
           {(
             [
@@ -451,8 +862,6 @@ export function DealEditForm({
             </label>
           ))}
         </div>
-
-        {/* Rückbuchung — visuell abgesetzt in dunkelrot */}
         <div className="rounded-lg border border-red-900/40 bg-red-900/10 px-4 py-3">
           <label className="flex items-center gap-2 text-sm cursor-pointer text-red-400">
             <input
@@ -467,7 +876,7 @@ export function DealEditForm({
         </div>
       </section>
 
-      {/* Notizen */}
+      {/* ── Notizen ── */}
       <div className="space-y-1.5">
         <Label htmlFor="notes">Notizen</Label>
         <textarea
