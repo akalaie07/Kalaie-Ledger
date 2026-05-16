@@ -98,7 +98,9 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   );
 
   // ── Ratenzahlung ──
-  const [ratePerPeriod, setRatePerPeriod] = useState(initial.inst_amount ?? 0);
+  const [gesamtbetrag, setGesamtbetrag] = useState(
+    initial.payment_type === "installments" ? initial.total_price : 0,
+  );
   const [numberOfRates, setNumberOfRates] = useState(initial.inst_count ?? 0);
   const [firstDueDate, setFirstDueDate] = useState(initial.first_due_date ?? "");
 
@@ -144,8 +146,8 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
     const savedEinmaligFaellig = ls("einmaligFaellig");
     if (savedEinmaligFaellig !== null) setEinmaligFaellig(savedEinmaligFaellig);
 
-    const savedRatePerPeriod = ls("ratePerPeriod");
-    if (savedRatePerPeriod) setRatePerPeriod(parseFloat(savedRatePerPeriod));
+    const savedGesamtbetrag = ls("gesamtbetrag");
+    if (savedGesamtbetrag) setGesamtbetrag(parseFloat(savedGesamtbetrag));
 
     const savedNumberOfRates = ls("numberOfRates");
     if (savedNumberOfRates) setNumberOfRates(parseInt(savedNumberOfRates));
@@ -207,7 +209,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   const computedTotalPrice = (() => {
     if (paymentModel === "abo" && isSubscription) return effectiveRegFee;
     if (paymentModel === "ratenzahlung")
-      return ratePerPeriod * numberOfRates + (hasAnzahlung ? downPayment : 0);
+      return gesamtbetrag;
     return einmaligBetrag;
   })();
 
@@ -237,9 +239,15 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
         setRegFeeChoice(firstFee);
         lsSave("regFeeChoice", firstFee);
       }
-    } else if (paymentModel === "abo") {
-      setPaymentModel("einmalig");
-      lsSave("paymentModel", "einmalig");
+    } else {
+      if (paymentModel === "abo") {
+        setPaymentModel("einmalig");
+        lsSave("paymentModel", "einmalig");
+      }
+      if (product?.default_price) {
+        setGesamtbetrag(product.default_price);
+        lsSave("gesamtbetrag", String(product.default_price));
+      }
     }
   }
 
@@ -549,16 +557,16 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                 <tbody className="divide-y divide-border">
                   <tr>
                     <td className="px-4 py-3 text-muted-foreground">
-                      Betrag pro Rate <span className="text-destructive">*</span>
+                      Gesamtbetrag <span className="text-destructive">*</span>
                     </td>
                     <td className="px-4 py-3">
                       <Input
                         type="number" min="0" step="0.01" placeholder="0,00"
-                        value={ratePerPeriod || ""}
+                        value={gesamtbetrag || ""}
                         onChange={(e) => {
                           const v = parseFloat(e.target.value) || 0;
-                          setRatePerPeriod(v);
-                          lsSave("ratePerPeriod", String(v));
+                          setGesamtbetrag(v);
+                          lsSave("gesamtbetrag", String(v));
                         }}
                         className="h-8 text-sm"
                         aria-invalid={!!fe.total_price}
@@ -603,6 +611,20 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                         aria-invalid={!!fe.first_due_date}
                       />
                       <FieldError msg={fe.first_due_date?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Betrag pro Rate</td>
+                    <td className="px-4 py-3">
+                      {gesamtbetrag > 0 && numberOfRates >= 1 ? (
+                        <span className="font-semibold tabular-nums">
+                          {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/50 text-xs">
+                          Wird berechnet…
+                        </span>
+                      )}
                     </td>
                   </tr>
                   <tr>
@@ -676,21 +698,22 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
               </table>
             </div>
 
-            {ratePerPeriod > 0 && numberOfRates >= 1 && (
+            {gesamtbetrag > 0 && numberOfRates >= 1 && (
               <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
                 <p className="font-medium text-blue-300 mb-1">Vorschau</p>
                 <div className="space-y-0.5 text-blue-200/80">
-                  <p>
-                    {fmt(ratePerPeriod)} × {numberOfRates} Raten ={" "}
-                    <span className="font-semibold text-blue-100">{fmt(ratePerPeriod * numberOfRates)}</span>
-                  </p>
                   {hasAnzahlung && downPayment > 0 && (
                     <p>
-                      + {fmt(downPayment)} Anzahlung ={" "}
-                      <span className="font-semibold text-blue-100 text-base">{fmt(computedTotalPrice)}</span>{" "}
-                      Gesamt
+                      {fmt(gesamtbetrag)} − {fmt(downPayment)} Anzahlung ={" "}
+                      <span className="font-semibold text-blue-100">{fmt(gesamtbetrag - downPayment)}</span>
                     </p>
                   )}
+                  <p>
+                    {fmt(gesamtbetrag - (hasAnzahlung ? downPayment : 0))} ÷ {numberOfRates} Raten ={" "}
+                    <span className="font-semibold text-blue-100 text-base">
+                      {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)} pro Rate
+                    </span>
+                  </p>
                 </div>
               </div>
             )}

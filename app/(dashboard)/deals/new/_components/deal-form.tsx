@@ -19,6 +19,7 @@ export interface ProductOption {
   product_type: "standard" | "subscription_monthly" | "subscription_yearly";
   registration_fee_options: number[];
   default_recurring_price: number | null;
+  default_price: number | null;
 }
 
 interface DealFormProps {
@@ -49,7 +50,7 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
   const [einmaligFaellig, setEinmaligFaellig] = useState("");
 
   // Ratenzahlung
-  const [ratePerPeriod, setRatePerPeriod] = useState(0);
+  const [gesamtbetrag, setGesamtbetrag] = useState(0);
   const [numberOfRates, setNumberOfRates] = useState(0);
   const [firstDueDate, setFirstDueDate] = useState("");
 
@@ -115,8 +116,9 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
       if ((product?.registration_fee_options ?? []).length > 0) {
         setRegFeeChoice(String(product!.registration_fee_options[0]));
       }
-    } else if (paymentModel === "abo") {
-      setPaymentModel("einmalig");
+    } else {
+      if (paymentModel === "abo") setPaymentModel("einmalig");
+      if (product?.default_price) setGesamtbetrag(product.default_price);
     }
   }
 
@@ -129,9 +131,9 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
 
   const computedTotalPrice = (() => {
     if (paymentModel === "abo" && isSubscription) return effectiveRegFee;
-    // Ratenzahlung: Raten + Anzahlung = Gesamt
+    // Ratenzahlung: Gesamtbetrag wie angegeben
     if (paymentModel === "ratenzahlung")
-      return ratePerPeriod * numberOfRates + (hasAnzahlung ? downPayment : 0);
+      return gesamtbetrag;
     // Einmalzahlung: total_price = einmaligBetrag (Anzahlung ist Teil des Betrags)
     return einmaligBetrag;
   })();
@@ -421,13 +423,13 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                 <tbody className="divide-y divide-border">
                   <tr>
                     <td className="px-4 py-3 text-muted-foreground">
-                      Betrag pro Rate <span className="text-destructive">*</span>
+                      Gesamtbetrag <span className="text-destructive">*</span>
                     </td>
                     <td className="px-4 py-3">
                       <Input
                         type="number" min="0" step="0.01" placeholder="0,00"
-                        value={ratePerPeriod || ""}
-                        onChange={(e) => setRatePerPeriod(parseFloat(e.target.value) || 0)}
+                        value={gesamtbetrag || ""}
+                        onChange={(e) => setGesamtbetrag(parseFloat(e.target.value) || 0)}
                         className="h-8 text-sm"
                         aria-invalid={!!fe.total_price}
                       />
@@ -464,6 +466,20 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                         aria-invalid={!!fe.first_due_date}
                       />
                       <FieldError msg={fe.first_due_date?.[0]} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Betrag pro Rate</td>
+                    <td className="px-4 py-3">
+                      {gesamtbetrag > 0 && numberOfRates >= 1 ? (
+                        <span className="font-semibold tabular-nums">
+                          {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/50 text-xs">
+                          Wird berechnet…
+                        </span>
+                      )}
                     </td>
                   </tr>
                   <tr>
@@ -524,21 +540,22 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
               </table>
             </div>
 
-            {ratePerPeriod > 0 && numberOfRates >= 1 && (
+            {gesamtbetrag > 0 && numberOfRates >= 1 && (
               <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
                 <p className="font-medium text-blue-300 mb-1">Vorschau</p>
                 <div className="space-y-0.5 text-blue-200/80">
-                  <p>
-                    {fmt(ratePerPeriod)} × {numberOfRates} Raten ={" "}
-                    <span className="font-semibold text-blue-100">{fmt(ratePerPeriod * numberOfRates)}</span>
-                  </p>
                   {hasAnzahlung && downPayment > 0 && (
                     <p>
-                      + {fmt(downPayment)} Anzahlung ={" "}
-                      <span className="font-semibold text-blue-100 text-base">{fmt(computedTotalPrice)}</span>{" "}
-                      Gesamt
+                      {fmt(gesamtbetrag)} − {fmt(downPayment)} Anzahlung ={" "}
+                      <span className="font-semibold text-blue-100">{fmt(gesamtbetrag - downPayment)}</span>
                     </p>
                   )}
+                  <p>
+                    {fmt(gesamtbetrag - (hasAnzahlung ? downPayment : 0))} ÷ {numberOfRates} Raten ={" "}
+                    <span className="font-semibold text-blue-100 text-base">
+                      {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)} pro Rate
+                    </span>
+                  </p>
                 </div>
               </div>
             )}
