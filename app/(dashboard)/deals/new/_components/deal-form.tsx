@@ -118,7 +118,10 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
       }
     } else {
       if (paymentModel === "abo") setPaymentModel("einmalig");
-      if (product?.default_price) setGesamtbetrag(product.default_price);
+      if (product?.default_price) {
+        setEinmaligBetrag(product.default_price);
+        setGesamtbetrag(product.default_price);
+      }
     }
   }
 

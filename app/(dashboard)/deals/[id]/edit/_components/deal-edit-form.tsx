@@ -245,6 +245,8 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
         lsSave("paymentModel", "einmalig");
       }
       if (product?.default_price) {
+        setEinmaligBetrag(product.default_price);
+        lsSave("einmaligBetrag", String(product.default_price));
         setGesamtbetrag(product.default_price);
         lsSave("gesamtbetrag", String(product.default_price));
       }
