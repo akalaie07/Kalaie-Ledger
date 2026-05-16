@@ -59,9 +59,6 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
   const [downPayment, setDownPayment] = useState(0);
   const [downPaymentDate, setDownPaymentDate] = useState("");
 
-  // Einmalkauf Preiswahl (wenn Preisoptionen am Produkt hinterlegt)
-  const [priceChoice, setPriceChoice] = useState("");
-
   // Abo
   const [regFeeChoice, setRegFeeChoice] = useState("");
   const [regFeeCustom, setRegFeeCustom] = useState(0);
@@ -121,17 +118,9 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
       }
     } else {
       if (paymentModel === "abo") setPaymentModel("einmalig");
-      const opts = product?.registration_fee_options ?? [];
-      if (opts.length > 0) {
-        setPriceChoice(String(opts[0]));
-        setEinmaligBetrag(opts[0]);
-        setGesamtbetrag(opts[0]);
-      } else {
-        setPriceChoice("");
-        if (product?.default_price) {
-          setEinmaligBetrag(product.default_price);
-          setGesamtbetrag(product.default_price);
-        }
+      if (product?.default_price) {
+        setEinmaligBetrag(product.default_price);
+        setGesamtbetrag(product.default_price);
       }
     }
   }
@@ -332,43 +321,14 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                     <td className="px-4 py-3 text-muted-foreground">
                       Betrag <span className="text-destructive">*</span>
                     </td>
-                    <td className="px-4 py-3 space-y-2">
-                      {regFeeOptions.length > 0 ? (
-                        <>
-                          <select
-                            value={priceChoice}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setPriceChoice(v);
-                              if (v !== "custom" && v !== "") setEinmaligBetrag(parseFloat(v));
-                              if (v === "") setEinmaligBetrag(0);
-                            }}
-                            className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          >
-                            <option value="">— keine Auswahl —</option>
-                            {regFeeOptions.map((fee) => (
-                              <option key={fee} value={String(fee)}>{fmt(fee)}</option>
-                            ))}
-                            <option value="custom">Benutzerdefiniert…</option>
-                          </select>
-                          {priceChoice === "custom" && (
-                            <Input
-                              type="number" min="0" step="0.01" placeholder="0,00"
-                              value={einmaligBetrag || ""}
-                              onChange={(e) => setEinmaligBetrag(parseFloat(e.target.value) || 0)}
-                              className="h-8 text-sm"
-                            />
-                          )}
-                        </>
-                      ) : (
-                        <Input
-                          type="number" min="0" step="0.01" placeholder="0,00"
-                          value={einmaligBetrag || ""}
-                          onChange={(e) => setEinmaligBetrag(parseFloat(e.target.value) || 0)}
-                          className="h-8 text-sm"
-                          aria-invalid={!!fe.total_price}
-                        />
-                      )}
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number" min="0" step="0.01" placeholder="0,00"
+                        value={einmaligBetrag || ""}
+                        onChange={(e) => setEinmaligBetrag(parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                        aria-invalid={!!fe.total_price}
+                      />
                       <FieldError msg={fe.total_price?.[0]} />
                     </td>
                   </tr>

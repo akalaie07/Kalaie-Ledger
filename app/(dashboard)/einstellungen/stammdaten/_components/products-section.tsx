@@ -127,24 +127,6 @@ function ProductForm({
         <FieldError errors={state?.fieldErrors?.product_type} />
       </div>
 
-      {/* Preisoptionen für Einmalkauf */}
-      {!isSubscription && (
-        <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-3">
-          <p className="text-xs font-medium text-blue-400">Preisoptionen</p>
-          <div className="space-y-1">
-            <Label htmlFor={`pr-regfees-${itemId ?? "new"}`}>Preisoptionen (€)</Label>
-            <Input
-              id={`pr-regfees-${itemId ?? "new"}`}
-              name="registration_fee_options_raw"
-              value={regFeeOptions}
-              onChange={(e) => setRegFeeOptions(e.target.value)}
-              placeholder="z.B. 1990, 1490, 990"
-            />
-            <p className="text-xs text-muted-foreground">Komma-getrennte Preise — werden im Deal-Formular als Dropdown angezeigt</p>
-          </div>
-        </div>
-      )}
-
       {/* Abo-spezifische Felder */}
       {isSubscription && (
         <div className="rounded-md border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
