@@ -115,7 +115,7 @@ const sidebarEntries: SidebarEntry[] = [
     sectionLabel: "Analyse",
     roles: ["admin"],
     items: [
-      { href: "/analyse/berichte", label: "Berichte", icon: BarChart2, roles: ["admin"] },
+      { href: "/berichte", label: "Berichte", icon: BarChart2, roles: ["admin"] },
     ],
   },
 

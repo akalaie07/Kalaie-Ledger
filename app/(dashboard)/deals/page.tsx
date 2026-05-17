@@ -98,7 +98,7 @@ export default async function DealsPage({
       .order("close_date", { ascending: false }),
     supabase
       .from("deal_balance")
-      .select("paid_sum, open_sum, overdue_sum")
+      .select("deal_id, paid_sum, open_sum, overdue_sum")
       .eq("organization_id", session.organizationId),
   ]);
 
@@ -195,13 +195,17 @@ export default async function DealsPage({
     if (isCurrentMonth) subPayMap.set(s.deal_id, s.paid as boolean);
   }
 
-  const bal = balance ?? [];
   const isAdmin = session.role === "admin";
 
-  const totalRevenue = rows.reduce((s, d) => s + (d.total_price as number), 0);
+  // KPIs nur für die aktuell angezeigten (gefilterten) Deals
+  const rowIdSet = new Set(rows.map((d) => d.id));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bal = (balance ?? []).filter((b: any) => rowIdSet.has(b.deal_id));
+
   const paidSum = bal.reduce((s, b) => s + (Number(b.paid_sum) || 0), 0);
   const openSum = bal.reduce((s, b) => s + (Number(b.open_sum) || 0), 0);
   const overdueSum = bal.reduce((s, b) => s + (Number(b.overdue_sum) || 0), 0);
+  const totalRevenue = paidSum + openSum;
 
   const dealRows: DealRowData[] = rows.map((d) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

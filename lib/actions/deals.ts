@@ -398,17 +398,18 @@ export async function updateDeal(
 // deleteDeal
 // ---------------------------------------------------------------------------
 
-export async function deleteDeal(id: string): Promise<void> {
+export async function deleteDeal(id: string): Promise<{ error?: string }> {
   const session = await getCurrentSession();
-  if (!session) return;
+  if (!session) return { error: "Nicht angemeldet." };
 
   const supabase = await createClient();
-  await supabase
+  const { error } = await supabase
     .from("deals")
     .delete()
     .eq("id", id)
     .eq("organization_id", session.organizationId);
 
+  if (error) return { error: error.message };
   revalidatePath("/deals");
   redirect("/deals");
 }
@@ -479,10 +480,10 @@ export async function setDealEscalation(
     .eq("id", dealId)
     .eq("organization_id", session.organizationId);
 
+  if (error) return { error: error.message };
   revalidatePath("/deals");
   revalidatePath("/forderungsmanagement/mahnung");
   revalidatePath("/forderungsmanagement/inkasso");
-  if (error) return { error: error.message };
   return {};
 }
 

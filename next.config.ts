@@ -50,8 +50,6 @@ const nextConfig: NextConfig = {
       { source: "/einstellungen",            destination: "/verwaltung/stammdaten",         permanent: false },
       // Chat → Verwaltung/Chat
       { source: "/chat",                     destination: "/verwaltung/chat",               permanent: false },
-      // Berichte → Analyse
-      { source: "/berichte",                 destination: "/analyse/berichte",              permanent: false },
       // Import — alte Sub-Routen
       { source: "/import/deals",             destination: "/import",                        permanent: false },
       { source: "/zahlungsabgleich",         destination: "/import/plattform",              permanent: false },

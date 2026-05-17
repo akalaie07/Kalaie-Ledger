@@ -64,8 +64,9 @@ export default async function BerichtePage({
     await Promise.all([
       supabase
         .from("deals")
-        .select("id, total_price, close_date, closer_id")
+        .select("id, total_price, close_date, closer_id, storniert")
         .eq("organization_id", session.organizationId)
+        .eq("storniert", false)
         .gte("close_date", rangeFrom)
         .lte("close_date", rangeTo),
       supabase
@@ -90,10 +91,10 @@ export default async function BerichtePage({
   let totalOffen = 0;
 
   for (const d of deals) {
-    const soll = Number(d.total_price) || 0;
     const balance = balanceMap.get(d.id);
     const ist = Number(balance?.paid_sum ?? 0);
     const offen = Number(balance?.open_sum ?? 0);
+    const soll = ist + offen; // paid + open = Gesamtumsatz (inkl. Abo-Zahlungen)
     totalSoll += soll;
     totalIst += ist;
     totalOffen += offen;
@@ -105,8 +106,11 @@ export default async function BerichtePage({
     let soll = 0;
     let ist = 0;
     for (const d of inPeriod) {
-      soll += Number(d.total_price) || 0;
-      ist += Number(balanceMap.get(d.id)?.paid_sum ?? 0);
+      const b = balanceMap.get(d.id);
+      const istVal = Number(b?.paid_sum ?? 0);
+      const offenVal = Number(b?.open_sum ?? 0);
+      soll += istVal + offenVal;
+      ist += istVal;
     }
     return { label, shortLabel, soll, ist, offen: Math.max(0, soll - ist), count: inPeriod.length };
   });
@@ -120,8 +124,9 @@ export default async function BerichtePage({
     if (!d.closer_id) continue;
     const c = closerById.get(d.closer_id);
     if (!c) continue;
-    const soll = Number(d.total_price) || 0;
-    const ist = Number(balanceMap.get(d.id)?.paid_sum ?? 0);
+    const b = balanceMap.get(d.id);
+    const ist = Number(b?.paid_sum ?? 0);
+    const soll = ist + Number(b?.open_sum ?? 0);
     const rate = Number(c.commission_rate) || 0;
     const prev = closerRevMap.get(d.closer_id) ?? { name: c.name, sollRevenue: 0, istRevenue: 0, sollCommission: 0, istCommission: 0, rate };
     closerRevMap.set(d.closer_id, {

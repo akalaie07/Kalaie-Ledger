@@ -193,6 +193,18 @@ export default async function DealDetailPage({
           label="Update-Call"
           value={<StatusBadge active={d.update_call_done} label={d.update_call_done ? "Erledigt" : "Ausstehend"} />}
         />
+        {(d as { chargeback?: boolean }).chargeback && (
+          <Row
+            label="Rückbuchung"
+            value={<span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-500/15 text-amber-400">Ja — Zahlung zurückgebucht</span>}
+          />
+        )}
+        {(d as { storniert?: boolean }).storniert && (
+          <Row
+            label="Storniert"
+            value={<span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-rose-500/15 text-rose-400">Ja — Vertrag storniert</span>}
+          />
+        )}
         {d.notes && <Row label="Notizen" value={d.notes} />}
       </div>
 
