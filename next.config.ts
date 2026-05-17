@@ -37,88 +37,24 @@ const nextConfig: NextConfig = {
 
   async redirects() {
     return [
-      // Forderungsmanagement → Forderungen
-      {
-        source: "/forderungsmanagement",
-        destination: "/forderungen/mahnung",
-        permanent: true,
-      },
-      {
-        source: "/forderungsmanagement/mahnung",
-        destination: "/forderungen/mahnung",
-        permanent: true,
-      },
-      {
-        source: "/forderungsmanagement/inkasso",
-        destination: "/forderungen/inkasso",
-        permanent: true,
-      },
-      // Standalone Inkasso-Seite → neue Route
-      {
-        source: "/inkasso",
-        destination: "/forderungen/inkasso",
-        permanent: true,
-      },
+      // Forderungen (alte Routen) → Forderungsmanagement
+      { source: "/forderungen/mahnung",      destination: "/forderungsmanagement/mahnung",  permanent: false },
+      { source: "/forderungen/inkasso",      destination: "/forderungsmanagement/inkasso",  permanent: false },
+      { source: "/forderungen/ueberfaellig", destination: "/forderungsmanagement",          permanent: false },
+      { source: "/forderungen",              destination: "/forderungsmanagement/mahnung",  permanent: false },
+      // Standalone Inkasso-Seite
+      { source: "/inkasso",                  destination: "/forderungsmanagement/inkasso",  permanent: false },
       // Einstellungen → Verwaltung
-      {
-        source: "/einstellungen/stammdaten",
-        destination: "/verwaltung/stammdaten",
-        permanent: true,
-      },
-      {
-        source: "/einstellungen/benutzer",
-        destination: "/verwaltung/benutzer",
-        permanent: true,
-      },
-      {
-        source: "/einstellungen",
-        destination: "/verwaltung/stammdaten",
-        permanent: true,
-      },
+      { source: "/einstellungen/stammdaten", destination: "/verwaltung/stammdaten",         permanent: false },
+      { source: "/einstellungen/benutzer",   destination: "/verwaltung/benutzer",           permanent: false },
+      { source: "/einstellungen",            destination: "/verwaltung/stammdaten",         permanent: false },
       // Chat → Verwaltung/Chat
-      {
-        source: "/chat",
-        destination: "/verwaltung/chat",
-        permanent: true,
-      },
+      { source: "/chat",                     destination: "/verwaltung/chat",               permanent: false },
       // Berichte → Analyse
-      {
-        source: "/berichte",
-        destination: "/analyse/berichte",
-        permanent: true,
-      },
+      { source: "/berichte",                 destination: "/analyse/berichte",              permanent: false },
       // Import — alte Sub-Routen
-      {
-        source: "/import/deals",
-        destination: "/import",
-        permanent: true,
-      },
-      {
-        source: "/import/zahlungsabgleich",
-        destination: "/import/plattform",
-        permanent: true,
-      },
-      {
-        source: "/import/zahlungsabgleich/copecart",
-        destination: "/import/plattform/copecart",
-        permanent: true,
-      },
-      {
-        source: "/import/zahlungsabgleich/digistore",
-        destination: "/import/plattform/digistore",
-        permanent: true,
-      },
-      {
-        source: "/import/zahlungsabgleich/ablefy",
-        destination: "/import/plattform/ablefy",
-        permanent: true,
-      },
-      // Zahlungsabgleich standalone → Import-Plattform
-      {
-        source: "/zahlungsabgleich",
-        destination: "/import/plattform",
-        permanent: true,
-      },
+      { source: "/import/deals",             destination: "/import",                        permanent: false },
+      { source: "/zahlungsabgleich",         destination: "/import/plattform",              permanent: false },
     ];
   },
 };

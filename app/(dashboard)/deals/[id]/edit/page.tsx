@@ -49,7 +49,7 @@ export default async function DealEditPage({
         .order("name"),
       supabase
         .from("one_time_payments")
-        .select("due_date")
+        .select("due_date, paid")
         .eq("deal_id", id)
         .maybeSingle(),
       supabase
@@ -94,10 +94,12 @@ export default async function DealEditPage({
           mahnung_required: deal.mahnung_required ?? false,
           inkasso_required: deal.inkasso_required,
           chargeback: deal.chargeback ?? false,
+          storniert: (deal as { storniert?: boolean }).storniert ?? false,
           notes: deal.notes,
           closer_id: deal.closer_id,
           down_payment: deal.down_payment ?? null,
           one_time_due_date: oneTime?.due_date ?? null,
+          reg_fee_paid: oneTime?.paid ?? false,
           recurring_amount: (deal as { recurring_amount?: number | null }).recurring_amount ?? null,
           subscription_start_date: (deal as { subscription_start_date?: string | null }).subscription_start_date ?? null,
           inst_amount: installments?.[0]?.amount ?? null,

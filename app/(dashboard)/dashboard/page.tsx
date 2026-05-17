@@ -30,11 +30,11 @@ export default async function DashboardPage() {
 
   // ─── Daten parallel laden ────────────────────────────────────────────────
   const [
-    { data: dealsData, count: totalDeals },
+    { count: totalDeals },
     { data: balanceData },
-    { data: mahnungData, count: mahnungCount },
-    { data: inkassoData, count: inkassoCount },
-    { data: conflictsData, count: conflictsCount },
+    { count: mahnungCount },
+    { count: inkassoCount },
+    { count: conflictsCount },
     { data: recentDeals },
   ] = await Promise.all([
     supabase
@@ -107,17 +107,18 @@ export default async function DashboardPage() {
       </div>
 
       {/* KPI-Karten */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className={`grid gap-4 ${isAdmin ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-2"}`}>
 
         {/* Gesamt Deals */}
         <Link href="/deals" className="group rounded-lg border border-border bg-card p-5 space-y-1 hover:border-foreground/30 hover:bg-muted/10 transition-colors">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Deals</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Deals gesamt</p>
             <FileText className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
           </div>
           <p className="text-2xl font-semibold tabular-nums">{totalDeals ?? 0}</p>
-          <p className="text-xs text-muted-foreground">Gesamt aktiv</p>
+          <p className="text-xs text-muted-foreground">In dieser Organisation</p>
         </Link>
+
 
         {/* Ist-Umsatz */}
         {isAdmin && (

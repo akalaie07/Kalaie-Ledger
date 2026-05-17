@@ -350,6 +350,7 @@ export type Database = {
           id: string;
           organization_id: string;
           customer_name: string;
+          customer_email: string | null;
           platform_id: string | null;
           payment_method: string | null;
           product_id: string | null;
@@ -362,6 +363,7 @@ export type Database = {
           inkasso_required: boolean;
           mahnung_required: boolean;
           chargeback: boolean;
+          storniert: boolean;
           onboarding_done: boolean;
           update_call_done: boolean;
           notes: string | null;
@@ -376,6 +378,7 @@ export type Database = {
           id?: string;
           organization_id: string;
           customer_name: string;
+          customer_email?: string | null;
           platform_id?: string | null;
           payment_method?: string | null;
           product_id?: string | null;
@@ -388,6 +391,7 @@ export type Database = {
           inkasso_required?: boolean;
           mahnung_required?: boolean;
           chargeback?: boolean;
+          storniert?: boolean;
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
@@ -402,6 +406,7 @@ export type Database = {
           id?: string;
           organization_id?: string;
           customer_name?: string;
+          customer_email?: string | null;
           platform_id?: string | null;
           payment_method?: string | null;
           product_id?: string | null;
@@ -414,6 +419,7 @@ export type Database = {
           inkasso_required?: boolean;
           mahnung_required?: boolean;
           chargeback?: boolean;
+          storniert?: boolean;
           onboarding_done?: boolean;
           update_call_done?: boolean;
           notes?: string | null;
@@ -632,6 +638,96 @@ export type Database = {
         };
         Relationships: [];
       };
+      import_batches: {
+        Row: {
+          id: string;
+          organization_id: string;
+          created_by: string | null;
+          source: string;
+          filename: string | null;
+          row_count: number;
+          created_count: number;
+          paid_count: number;
+          skipped_count: number;
+          review_count: number;
+          error_count: number;
+          status: "pending" | "completed" | "failed" | "rolled_back";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          created_by?: string | null;
+          source: string;
+          filename?: string | null;
+          row_count?: number;
+          created_count?: number;
+          paid_count?: number;
+          skipped_count?: number;
+          review_count?: number;
+          error_count?: number;
+          status?: "pending" | "completed" | "failed" | "rolled_back";
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          created_by?: string | null;
+          source?: string;
+          filename?: string | null;
+          row_count?: number;
+          created_count?: number;
+          paid_count?: number;
+          skipped_count?: number;
+          review_count?: number;
+          error_count?: number;
+          status?: "pending" | "completed" | "failed" | "rolled_back";
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      import_rows: {
+        Row: {
+          id: string;
+          batch_id: string;
+          organization_id: string;
+          row_number: number;
+          synthetic_key: string;
+          action: string;
+          classification: string;
+          deal_id: string | null;
+          installment_id: string | null;
+          raw_data: Record<string, unknown> | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          batch_id: string;
+          organization_id: string;
+          row_number: number;
+          synthetic_key: string;
+          action: string;
+          classification: string;
+          deal_id?: string | null;
+          installment_id?: string | null;
+          raw_data?: Record<string, unknown> | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          batch_id?: string;
+          organization_id?: string;
+          row_number?: number;
+          synthetic_key?: string;
+          action?: string;
+          classification?: string;
+          deal_id?: string | null;
+          installment_id?: string | null;
+          raw_data?: Record<string, unknown> | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       deals_with_status: {
         Row: {
           id: string;
@@ -650,10 +746,15 @@ export type Database = {
           mahnung_required: boolean;
           onboarding_done: boolean;
           update_call_done: boolean;
+          chargeback: boolean;
+          storniert: boolean;
           notes: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          down_payment: number | null;
+          recurring_amount: number | null;
+          subscription_start_date: string | null;
           paid_sum: number;
           open_sum: number;
           overdue_sum: number;

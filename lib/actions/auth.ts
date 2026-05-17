@@ -55,7 +55,7 @@ const InviteSignupSchema = z.object({
 // ---------------------------------------------------------------------------
 
 function safeRedirectPath(next: string | null | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/deals";
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("\\")) return "/deals";
   return next;
 }
 

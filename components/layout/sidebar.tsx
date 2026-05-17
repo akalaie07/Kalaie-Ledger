@@ -105,9 +105,8 @@ const sidebarEntries: SidebarEntry[] = [
     sectionLabel: "Forderungen",
     roles: ["admin"],
     items: [
-      { href: "/forderungen/mahnung", label: "Mahnungen", icon: Bell, roles: ["admin"] },
-      { href: "/forderungen/inkasso", label: "Inkasso", icon: Gavel, roles: ["admin"] },
-      { href: "/forderungen/ueberfaellig", label: "Überfällig", icon: Clock, roles: ["admin"] },
+      { href: "/forderungsmanagement/mahnung", label: "Mahnungen", icon: Bell, roles: ["admin"] },
+      { href: "/forderungsmanagement/inkasso", label: "Inkasso", icon: Gavel, roles: ["admin"] },
     ],
   },
 

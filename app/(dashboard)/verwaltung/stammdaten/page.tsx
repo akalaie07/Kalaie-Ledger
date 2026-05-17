@@ -15,6 +15,10 @@ import {
   updateCloser,
   toggleCloser,
   deleteCloser,
+  createSalesPartner,
+  updateSalesPartner,
+  toggleSalesPartner,
+  deleteSalesPartner,
 } from "@/lib/actions/stammdaten";
 
 import {
@@ -38,10 +42,11 @@ export default async function StammdatenPage() {
   const orgId = session.organizationId;
   const supabase = await createClient();
 
-  const [platforms, products, closers, profiles] = await Promise.all([
+  const [platforms, products, closers, salesPartners, profiles] = await Promise.all([
     supabase.from("platforms").select("id, name, active").eq("organization_id", orgId).order("name"),
     supabase.from("products").select("id, name, default_price, active, product_type, registration_fee_options, default_recurring_price").eq("organization_id", orgId).order("name"),
     supabase.from("closers").select("id, name, commission_rate, active, profile_id").eq("organization_id", orgId).order("name"),
+    supabase.from("sales_partners").select("id, name, commission_rate, active, profile_id").eq("organization_id", orgId).order("name"),
     supabase.from("profiles").select("id, full_name, email").eq("organization_id", orgId).order("full_name"),
   ]);
 
@@ -78,6 +83,16 @@ export default async function StammdatenPage() {
         updateAction={updateCloser}
         toggleAction={toggleCloser}
         deleteAction={deleteCloser}
+      />
+
+      <StaffSection
+        title="Sales-Partner"
+        items={(salesPartners.data ?? []) as StaffItem[]}
+        profiles={(profiles.data ?? []) as ProfileOpt[]}
+        createAction={createSalesPartner}
+        updateAction={updateSalesPartner}
+        toggleAction={toggleSalesPartner}
+        deleteAction={deleteSalesPartner}
       />
     </div>
   );

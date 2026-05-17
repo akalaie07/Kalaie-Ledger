@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { HandshakeIcon, PhoneCall, TriangleAlert, Gavel, Trash2, Undo2 } from "lucide-react";
+import { HandshakeIcon, PhoneCall, TriangleAlert, Gavel, Trash2, Undo2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { bulkDeleteDeals, toggleDealFlag, setDealEscalation } from "@/lib/actions/deals";
@@ -30,12 +30,15 @@ export type DealRowData = {
   mahnung_required: boolean;
   inkasso_required: boolean;
   chargeback: boolean;
+  storniert: boolean;
   onboarding_done: boolean;
   update_call_done: boolean;
   otp_paid: boolean | null;
   inst_total: number;
   inst_paid: number;
   inst_open_amount: number;
+  inst_current_month_paid: boolean | null;
+  sub_current_month_paid: boolean | null;
 };
 
 // =============================================================================
@@ -48,17 +51,21 @@ function DealStatusIcons({
   updateCallDone,
   mahnungRequired,
   inkassoRequired,
+  chargeback,
+  storniert,
 }: {
   dealId: string;
   onboardingDone: boolean;
   updateCallDone: boolean;
   mahnungRequired: boolean;
   inkassoRequired: boolean;
+  chargeback: boolean;
+  storniert: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  function toggle(flag: "onboarding_done" | "update_call_done", current: boolean) {
+  function toggle(flag: "onboarding_done" | "update_call_done" | "chargeback" | "storniert", current: boolean) {
     startTransition(async () => {
       await toggleDealFlag(dealId, flag, !current);
       router.refresh();
@@ -120,6 +127,36 @@ function DealStatusIcons({
           <Gavel className="h-3.5 w-3.5" />
         </span>
       )}
+
+      {/* Rückbuchung — immer sichtbar, klickbar */}
+      <button
+        title={chargeback ? "Rückbuchung aufheben" : "Als Rückbuchung markieren"}
+        onClick={(e) => { e.preventDefault(); toggle("chargeback", chargeback); }}
+        disabled={pending}
+        className={cn(
+          "rounded p-0.5 transition-colors disabled:opacity-50",
+          chargeback
+            ? "text-amber-400 hover:text-amber-300"
+            : "text-muted-foreground/25 hover:text-muted-foreground/60",
+        )}
+      >
+        <Undo2 className="h-3.5 w-3.5" />
+      </button>
+
+      {/* Storniert — immer sichtbar, klickbar */}
+      <button
+        title={storniert ? "Stornierung aufheben" : "Als storniert markieren"}
+        onClick={(e) => { e.preventDefault(); toggle("storniert", storniert); }}
+        disabled={pending}
+        className={cn(
+          "rounded p-0.5 transition-colors disabled:opacity-50",
+          storniert
+            ? "text-rose-400 hover:text-rose-300"
+            : "text-muted-foreground/25 hover:text-muted-foreground/60",
+        )}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -329,9 +366,10 @@ export function DealsTable({
                                 {isPaid ? `Bezahlt · ${fmt(deal.total_price)}` : "Offen"}
                               </span>
                               {deal.chargeback && (
-                                <p className="text-xs font-medium text-red-800">
-                                  Rückbuchung
-                                </p>
+                                <p className="text-xs font-medium text-amber-500">Rückbuchung</p>
+                              )}
+                              {deal.storniert && (
+                                <p className="text-xs font-medium text-rose-400">Storniert</p>
                               )}
                               {!deal.chargeback && (deal.down_payment || (!isPaid && openAmt > 0)) && (
                                 <p className="text-xs text-muted-foreground">
@@ -345,9 +383,46 @@ export function DealsTable({
                             </>
                           );
                         })()
+                      ) : isAbo ? (
+                        (() => {
+                          const regPaid = deal.otp_paid;
+                          const hasRegFee = deal.total_price > 0;
+                          const curMonth = deal.sub_current_month_paid;
+                          return (
+                            <>
+                              {hasRegFee ? (
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                                    regPaid
+                                      ? "bg-emerald-500/15 text-emerald-400"
+                                      : "bg-rose-500/15 text-rose-400",
+                                  )}
+                                >
+                                  {regPaid
+                                    ? `Anm. bezahlt · ${fmt(deal.total_price)}`
+                                    : `Anm. offen · ${fmt(deal.total_price)}`}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground/40 text-xs">Keine Anm.-Geb.</span>
+                              )}
+                              {curMonth !== null && (
+                                <p className={cn("text-xs font-medium", curMonth ? "text-emerald-400" : "text-rose-400")}>
+                                  {curMonth ? "Akt. Monat bezahlt" : "Akt. Monat offen"}
+                                </p>
+                              )}
+                              {deal.chargeback && (
+                                <p className="text-xs font-medium text-amber-500">Rückbuchung</p>
+                              )}
+                              {deal.storniert && (
+                                <p className="text-xs font-medium text-rose-400">Storniert</p>
+                              )}
+                            </>
+                          );
+                        })()
                       ) : (
                         (() => {
-                          const { inst_total: total, inst_paid: paid, inst_open_amount: openAmount } = deal;
+                          const { inst_total: total, inst_paid: paid, inst_open_amount: openAmount, inst_current_month_paid: curMonth } = deal;
                           if (total === 0)
                             return <span className="text-muted-foreground/40 text-xs">—</span>;
                           const done = paid === total;
@@ -365,10 +440,16 @@ export function DealsTable({
                               >
                                 {paid}/{total} Raten
                               </span>
-                              {deal.chargeback && (
-                                <p className="text-xs font-medium text-red-800">
-                                  Rückbuchung
+                              {!done && curMonth !== null && (
+                                <p className={cn("text-xs font-medium", curMonth ? "text-emerald-400" : "text-rose-400")}>
+                                  {curMonth ? "Akt. Rate bezahlt" : "Akt. Rate offen"}
                                 </p>
+                              )}
+                              {deal.chargeback && (
+                                <p className="text-xs font-medium text-amber-500">Rückbuchung</p>
+                              )}
+                              {deal.storniert && (
+                                <p className="text-xs font-medium text-rose-400">Storniert</p>
                               )}
                               {!deal.chargeback && (deal.down_payment || (!done && openAmount > 0)) && (
                                 <p className="text-xs text-muted-foreground">
@@ -389,20 +470,15 @@ export function DealsTable({
                     {format(new Date(deal.close_date), "dd.MM.yyyy", { locale: de })}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <DealStatusIcons
-                        dealId={deal.id}
-                        onboardingDone={deal.onboarding_done}
-                        updateCallDone={deal.update_call_done}
-                        mahnungRequired={deal.mahnung_required}
-                        inkassoRequired={deal.inkasso_required}
-                      />
-                      {deal.chargeback && (
-                        <span title="Rückbuchung" className="rounded p-0.5 text-red-800">
-                          <Undo2 className="h-3.5 w-3.5" />
-                        </span>
-                      )}
-                    </div>
+                    <DealStatusIcons
+                      dealId={deal.id}
+                      onboardingDone={deal.onboarding_done}
+                      updateCallDone={deal.update_call_done}
+                      mahnungRequired={deal.mahnung_required}
+                      inkassoRequired={deal.inkasso_required}
+                      chargeback={deal.chargeback}
+                      storniert={deal.storniert}
+                    />
                   </td>
                   {isAdmin && (
                     <td className="px-3 py-3">

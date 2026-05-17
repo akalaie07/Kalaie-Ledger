@@ -92,7 +92,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, chargeback, onboarding_done, update_call_done, order_id, notes, down_payment, recurring_amount, platforms(name), products(name, product_type), closers(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, chargeback, storniert, onboarding_done, update_call_done, order_id, notes, down_payment, recurring_amount, platforms(name), products(name, product_type), closers(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -161,26 +161,38 @@ export default async function DealsPage({
 
   const dealIds = rows.map((d) => d.id);
 
-  const [{ data: oneTimePayments }, { data: installmentRows }] = dealIds.length > 0
+  const [{ data: oneTimePayments }, { data: installmentRows }, { data: subPayRows }] = dealIds.length > 0
     ? await Promise.all([
         supabase.from("one_time_payments").select("deal_id, paid").in("deal_id", dealIds),
-        supabase.from("installments").select("deal_id, paid, amount").in("deal_id", dealIds),
+        supabase.from("installments").select("deal_id, paid, amount, due_date").in("deal_id", dealIds),
+        supabase.from("subscription_payments").select("deal_id, paid, due_date").in("deal_id", dealIds),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }];
 
   // Build per-deal payment lookup
   const otpMap = new Map<string, boolean>();
   for (const o of oneTimePayments ?? []) otpMap.set(o.deal_id, o.paid);
 
-  const instMap = new Map<string, { total: number; paid: number; perRate: number; openAmount: number }>();
+  const currentYearMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+
+  const instMap = new Map<string, { total: number; paid: number; perRate: number; openAmount: number; currentMonthPaid: boolean | null }>();
   for (const i of installmentRows ?? []) {
-    const cur = instMap.get(i.deal_id) ?? { total: 0, paid: 0, perRate: 0, openAmount: 0 };
+    const cur = instMap.get(i.deal_id) ?? { total: 0, paid: 0, perRate: 0, openAmount: 0, currentMonthPaid: null };
+    const isCurrentMonth = (i.due_date as string)?.slice(0, 7) === currentYearMonth;
     instMap.set(i.deal_id, {
       total: cur.total + 1,
       paid: cur.paid + (i.paid ? 1 : 0),
-      perRate: cur.total === 0 ? (i.amount ?? 0) : cur.perRate, // erste Rate als Referenz
+      perRate: cur.total === 0 ? (i.amount ?? 0) : cur.perRate,
       openAmount: cur.openAmount + (!i.paid ? (i.amount ?? 0) : 0),
+      currentMonthPaid: isCurrentMonth ? (i.paid as boolean) : cur.currentMonthPaid,
     });
+  }
+
+  // Abo: aktueller Monat bezahlt?
+  const subPayMap = new Map<string, boolean | null>();
+  for (const s of subPayRows ?? []) {
+    const isCurrentMonth = (s.due_date as string)?.slice(0, 7) === currentYearMonth;
+    if (isCurrentMonth) subPayMap.set(s.deal_id, s.paid as boolean);
   }
 
   const bal = balance ?? [];
@@ -211,13 +223,18 @@ export default async function DealsPage({
       mahnung_required: d.mahnung_required ?? false,
       inkasso_required: d.inkasso_required ?? false,
       chargeback: (d.chargeback as boolean) ?? false,
+      storniert: (d.storniert as boolean) ?? false,
       onboarding_done: d.onboarding_done ?? false,
       update_call_done: (d.update_call_done as boolean) ?? false,
       recurring_amount: (d.recurring_amount as number | null) ?? null,
-      otp_paid: d.payment_type === "one_time" ? (otpMap.get(d.id) ?? false) : null,
+      otp_paid: (d.payment_type === "one_time" || d.payment_type === "subscription_monthly" || d.payment_type === "subscription_yearly")
+        ? (otpMap.get(d.id) ?? false)
+        : null,
       inst_total: inst?.total ?? 0,
       inst_paid: inst?.paid ?? 0,
       inst_open_amount: inst?.openAmount ?? 0,
+      inst_current_month_paid: inst?.currentMonthPaid ?? null,
+      sub_current_month_paid: subPayMap.get(d.id) ?? null,
     };
   });
 

@@ -1,14 +1,4 @@
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
 
-/**
- * Supabase-Client mit Service-Role-Key — bypassed RLS vollständig.
- * NUR für serverseitige Super-Admin-Aktionen verwenden.
- */
-export function createServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-}
+// Re-export createAdminClient under the legacy name to avoid touching callers.
+export { createAdminClient as createServiceClient } from "@/lib/supabase/admin";

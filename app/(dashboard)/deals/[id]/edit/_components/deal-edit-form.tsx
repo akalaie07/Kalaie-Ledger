@@ -32,6 +32,7 @@ interface DealEditFormProps {
     mahnung_required: boolean;
     inkasso_required: boolean;
     chargeback: boolean;
+    storniert: boolean;
     notes: string | null;
     closer_id: string | null;
     down_payment: number | null;
@@ -41,6 +42,7 @@ interface DealEditFormProps {
     inst_amount: number | null;
     inst_count: number | null;
     first_due_date: string | null;
+    reg_fee_paid: boolean;
   };
 }
 
@@ -112,6 +114,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   );
 
   // ── Abo ──
+  const [regFeePaid, setRegFeePaid] = useState(initial.reg_fee_paid);
   const [regFeeChoice, setRegFeeChoice] = useState(initRegFeeChoice);
   const [regFeeCustom, setRegFeeCustom] = useState(initRegFeeCustom);
   const [recurringAmount, setRecurringAmount] = useState(initial.recurring_amount ?? 0);
@@ -182,6 +185,16 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
 
   function lsSave(key: string, value: string) {
     localStorage.setItem(`kalaie_edit_${dealId}_${key}`, value);
+  }
+
+  function clearDraft() {
+    const keys = [
+      "closeDate", "closerId", "paymentModel", "einmaligBetrag", "einmaligFaellig",
+      "gesamtbetrag", "numberOfRates", "firstDueDate", "hasAnzahlung", "downPayment",
+      "downPaymentDate", "recurringAmount", "subscriptionStart", "paymentMethod",
+      "regFeeChoice", "regFeeCustom",
+    ];
+    for (const key of keys) localStorage.removeItem(`kalaie_edit_${dealId}_${key}`);
   }
 
   // ── Derived ──
@@ -262,7 +275,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   const fe = state?.fieldErrors ?? {};
 
   return (
-    <form action={action} className="space-y-6">
+    <form action={action} onSubmit={clearDraft} className="space-y-6">
       {state?.error && (
         <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {state.error}
@@ -745,6 +758,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                         onChange={(e) => {
                           setRegFeeChoice(e.target.value);
                           lsSave("regFeeChoice", e.target.value);
+                          setRegFeePaid(false);
                         }}
                         className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
@@ -765,6 +779,23 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                           }}
                           className="h-8 text-sm"
                         />
+                      )}
+                      {effectiveRegFee > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setRegFeePaid((v) => !v)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all cursor-pointer hover:ring-2 hover:ring-offset-1",
+                            regFeePaid
+                              ? "bg-emerald-500/15 text-emerald-400 hover:ring-emerald-500/40"
+                              : "bg-muted text-muted-foreground hover:ring-border",
+                          )}
+                        >
+                          {regFeePaid ? "✓ Bereits bezahlt" : "Noch nicht bezahlt"}
+                        </button>
+                      )}
+                      {effectiveRegFee > 0 && regFeePaid && (
+                        <input type="hidden" name="reg_fee_paid" value="on" />
                       )}
                     </td>
                   </tr>
@@ -887,16 +918,26 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
             </label>
           ))}
         </div>
-        <div className="rounded-lg border border-red-900/40 bg-red-900/10 px-4 py-3">
-          <label className="flex items-center gap-2 text-sm cursor-pointer text-red-400">
+        <div className="rounded-lg border border-red-900/40 bg-red-900/10 px-4 py-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-amber-400">
             <input
               type="checkbox"
               name="chargeback"
               value="on"
               defaultChecked={initial.chargeback}
+              className="h-4 w-4 rounded border-amber-800 accent-amber-700"
+            />
+            Rückbuchung — Zahlung wurde zurückgebucht
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-red-400">
+            <input
+              type="checkbox"
+              name="storniert"
+              value="on"
+              defaultChecked={initial.storniert}
               className="h-4 w-4 rounded border-red-800 accent-red-700"
             />
-            Rückbuchung — Zahlung wurde zurückgebucht / storniert
+            Storniert — Vertrag wurde storniert / gekündigt
           </label>
         </div>
       </section>

@@ -62,6 +62,7 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
   // Abo
   const [regFeeChoice, setRegFeeChoice] = useState("");
   const [regFeeCustom, setRegFeeCustom] = useState(0);
+  const [regFeePaid, setRegFeePaid] = useState(false);
   const [recurringAmount, setRecurringAmount] = useState(0);
   const [subscriptionStart, setSubscriptionStart] = useState("");
 
@@ -245,6 +246,9 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
             <input type="hidden" name="recurring_amount" value={recurringAmount || 0} />
             {subscriptionStart && (
               <input type="hidden" name="subscription_start_date" value={subscriptionStart} />
+            )}
+            {effectiveRegFee > 0 && regFeePaid && (
+              <input type="hidden" name="reg_fee_paid" value="on" />
             )}
           </>
         )}
@@ -585,7 +589,7 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                     <td className="px-4 py-3 space-y-2">
                       <select
                         value={regFeeChoice}
-                        onChange={(e) => setRegFeeChoice(e.target.value)}
+                        onChange={(e) => { setRegFeeChoice(e.target.value); setRegFeePaid(false); }}
                         className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
                         <option value="">— keine / 0 € —</option>
@@ -601,6 +605,21 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                           onChange={(e) => setRegFeeCustom(parseFloat(e.target.value) || 0)}
                           className="h-8 text-sm"
                         />
+                      )}
+                      {effectiveRegFee > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setRegFeePaid((v) => !v)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
+                            "hover:ring-2 hover:ring-offset-1",
+                            regFeePaid
+                              ? "bg-emerald-500/15 text-emerald-400 hover:ring-emerald-500/40"
+                              : "bg-muted text-muted-foreground hover:ring-border",
+                          )}
+                        >
+                          {regFeePaid ? "✓ Bereits bezahlt" : "Noch nicht bezahlt"}
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -712,15 +731,24 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
             </label>
           ))}
         </div>
-        <div className="rounded-lg border border-red-900/40 bg-red-900/10 px-4 py-3">
-          <label className="flex items-center gap-2 text-sm cursor-pointer text-red-400">
+        <div className="rounded-lg border border-red-900/40 bg-red-900/10 px-4 py-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-amber-400">
             <input
               type="checkbox"
               name="chargeback"
               value="on"
+              className="h-4 w-4 rounded border-amber-800 accent-amber-700"
+            />
+            Rückbuchung — Zahlung wurde zurückgebucht
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-red-400">
+            <input
+              type="checkbox"
+              name="storniert"
+              value="on"
               className="h-4 w-4 rounded border-red-800 accent-red-700"
             />
-            Rückbuchung — Zahlung wurde zurückgebucht / storniert
+            Storniert — Vertrag wurde storniert / gekündigt
           </label>
         </div>
       </section>

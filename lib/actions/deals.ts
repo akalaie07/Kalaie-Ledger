@@ -62,6 +62,10 @@ const DealSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "on"),
+  storniert: z
+    .string()
+    .optional()
+    .transform((v) => v === "on"),
   onboarding_done: z
     .string()
     .optional()
@@ -95,6 +99,10 @@ const DealSchema = z.object({
     z.number().nonnegative().nullable(),
   ),
   subscription_start_date: optDate,
+  reg_fee_paid: z
+    .string()
+    .optional()
+    .transform((v) => v === "on"),
 });
 
 // ---------------------------------------------------------------------------
@@ -159,6 +167,8 @@ export async function createDeal(
     down_payment,
     recurring_amount,
     subscription_start_date,
+    reg_fee_paid,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     ...dealFields
   } = result.data;
 
@@ -171,6 +181,13 @@ export async function createDeal(
     (!number_of_rates || !first_due_date)
   ) {
     return { error: "Bitte Anzahl Raten und erstes Fälligkeitsdatum angeben." };
+  }
+
+  if (dealFields.payment_type === "installments") {
+    const installmentTotal = dealFields.total_price - (down_payment ?? 0);
+    if (installmentTotal < 0) {
+      return { error: "Anzahlung darf den Gesamtpreis nicht übersteigen." };
+    }
   }
 
   const supabase = await createClient();
@@ -205,6 +222,8 @@ export async function createDeal(
         deal_id: deal.id,
         organization_id: session.organizationId,
         due_date: subscription_start_date ?? null,
+        paid: reg_fee_paid ?? false,
+        paid_at: reg_fee_paid ? new Date().toISOString() : null,
       });
     }
     // Ersten Abo-Monat / -Jahr als subscription_payment anlegen (falls Start gesetzt)
@@ -267,6 +286,7 @@ export async function updateDeal(
     down_payment,
     recurring_amount,
     subscription_start_date,
+    reg_fee_paid,
     ...dealFields
   } = result.data;
 
@@ -298,16 +318,49 @@ export async function updateDeal(
       .eq("organization_id", session.organizationId);
   }
 
+  // Anmeldegebühr-Status für Abo aktualisieren
+  if (isSubscription) {
+    const { data: existingOtp } = await supabase
+      .from("one_time_payments")
+      .select("paid")
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId)
+      .maybeSingle();
+
+    if (existingOtp) {
+      await supabase
+        .from("one_time_payments")
+        .update({
+          paid: reg_fee_paid ?? false,
+          paid_at: reg_fee_paid ? new Date().toISOString() : null,
+        })
+        .eq("deal_id", id)
+        .eq("organization_id", session.organizationId);
+    } else if ((dealFields.total_price ?? 0) > 0) {
+      await supabase.from("one_time_payments").insert({
+        deal_id: id,
+        organization_id: session.organizationId,
+        paid: reg_fee_paid ?? false,
+        paid_at: reg_fee_paid ? new Date().toISOString() : null,
+      });
+    }
+  }
+
   // Raten neu generieren wenn angegeben
   if (dealFields.payment_type === "installments" && number_of_rates && first_due_date) {
+    const installmentTotal = dealFields.total_price - (down_payment ?? 0);
+    if (installmentTotal < 0) {
+      return { error: "Anzahlung darf den Gesamtpreis nicht übersteigen." };
+    }
+
     // Bestehende Raten löschen
-    await supabase
+    const { error: deleteError } = await supabase
       .from("installments")
       .delete()
       .eq("deal_id", id)
       .eq("organization_id", session.organizationId);
 
-    const installmentTotal = dealFields.total_price - (down_payment ?? 0);
+    if (deleteError) return { error: "Raten konnten nicht aktualisiert werden." };
     const rows = generateInstallments(
       id,
       session.organizationId,
@@ -384,25 +437,21 @@ export async function bulkDeleteDeals(ids: string[]): Promise<{ error?: string }
 
 export async function toggleDealFlag(
   dealId: string,
-  flag: "onboarding_done" | "update_call_done",
+  flag: "onboarding_done" | "update_call_done" | "chargeback" | "storniert",
   value: boolean,
 ): Promise<{ error?: string }> {
   const session = await getCurrentSession();
   if (!session) return { error: "Nicht angemeldet." };
 
   const supabase = await createClient();
-  const patch =
-    flag === "onboarding_done"
-      ? { onboarding_done: value }
-      : { update_call_done: value };
   const { error } = await supabase
     .from("deals")
-    .update(patch)
+    .update({ [flag]: value })
     .eq("id", dealId)
     .eq("organization_id", session.organizationId);
 
-  revalidatePath("/deals");
   if (error) return { error: error.message };
+  revalidatePath("/deals");
   return {};
 }
 
@@ -450,6 +499,8 @@ export async function updateDealNote(
     .eq("id", dealId)
     .eq("organization_id", session.organizationId);
 
+  revalidatePath(`/deals/${dealId}`);
+  revalidatePath("/deals");
   revalidatePath("/forderungsmanagement/mahnung");
   if (error) return { error: error.message };
   return {};
@@ -483,14 +534,17 @@ export async function generateInstallmentsForDeal(
 
   if (!deal) return { error: "Deal nicht gefunden." };
 
+  const installmentTotal = deal.total_price - (deal.down_payment ?? 0);
+  if (installmentTotal < 0) {
+    return { error: "Anzahlung übersteigt den Gesamtpreis. Bitte zuerst den Deal korrigieren." };
+  }
+
   // Bestehende Raten löschen (Neuberechnung)
   await supabase
     .from("installments")
     .delete()
     .eq("deal_id", dealId)
     .eq("organization_id", session.organizationId);
-
-  const installmentTotal = deal.total_price - (deal.down_payment ?? 0);
   const rows = generateInstallments(
     dealId,
     session.organizationId,
@@ -618,6 +672,31 @@ export async function toggleSubscriptionPayment(
     .eq("organization_id", session.organizationId);
 
   if (error) return { error: "Status konnte nicht aktualisiert werden." };
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// updateSubscriptionPayment — Datum / Betrag einer Abo-Zahlung bearbeiten
+// ---------------------------------------------------------------------------
+
+export async function updateSubscriptionPayment(
+  paymentId: string,
+  dealId: string,
+  dueDate: string,
+  amount: number,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("subscription_payments")
+    .update({ due_date: dueDate, amount })
+    .eq("id", paymentId)
+    .eq("organization_id", session.organizationId);
+
+  if (error) return { error: "Zahlung konnte nicht aktualisiert werden." };
   revalidatePath(`/deals/${dealId}`);
   return {};
 }
