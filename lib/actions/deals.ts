@@ -444,9 +444,14 @@ export async function toggleDealFlag(
   if (!session) return { error: "Nicht angemeldet." };
 
   const supabase = await createClient();
+  const patch =
+    flag === "onboarding_done" ? { onboarding_done: value }
+    : flag === "update_call_done" ? { update_call_done: value }
+    : flag === "chargeback" ? { chargeback: value }
+    : { storniert: value };
   const { error } = await supabase
     .from("deals")
-    .update({ [flag]: value })
+    .update(patch)
     .eq("id", dealId)
     .eq("organization_id", session.organizationId);
 
