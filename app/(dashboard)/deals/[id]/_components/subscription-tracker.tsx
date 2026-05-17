@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
@@ -166,8 +166,8 @@ export function SubscriptionTracker({
           </thead>
           <tbody className="divide-y divide-border">
             {payments.map((p) => (
-              <>
-                <tr key={p.id} className="hover:bg-muted/20">
+              <React.Fragment key={p.id}>
+                <tr className="hover:bg-muted/20">
                   <td className="px-4 py-2.5 text-muted-foreground">{p.sequence}</td>
                   <td className="px-4 py-2.5 tabular-nums">
                     {format(new Date(p.due_date), "dd.MM.yyyy", { locale: de })}
@@ -204,7 +204,7 @@ export function SubscriptionTracker({
                   </td>
                 </tr>
                 {editingId === p.id && (
-                  <tr key={`${p.id}-edit`} className="bg-muted/20">
+                  <tr className="bg-muted/20">
                     <td colSpan={5} className="px-4 py-3">
                       <div className="flex items-end gap-3">
                         <div className="space-y-1">
@@ -237,7 +237,7 @@ export function SubscriptionTracker({
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             ))}
           </tbody>
         </table>
