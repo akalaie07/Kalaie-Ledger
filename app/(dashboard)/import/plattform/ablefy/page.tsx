@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { requireRole } from "@/lib/auth/get-current-org";
 import { AblefyImportWizard } from "@/app/(dashboard)/import/_components/ablefy-import-wizard";
+import { AblefyBackfillButton } from "./_components/backfill-button";
 
 export const metadata: Metadata = { title: "Ablefy-Import — Kalaie Ledger" };
 
@@ -23,9 +24,19 @@ export default async function AblefyImportPage() {
         <div>
           <h1 className="text-xl font-semibold">Ablefy-Import</h1>
           <p className="text-sm text-muted-foreground">
-            CSV hochladen → Felder zuordnen → Prüfen → Importieren
+            Historische Daten laden oder CSV manuell hochladen
           </p>
         </div>
+      </div>
+
+      {/* Automatischer Backfill */}
+      <AblefyBackfillButton />
+
+      {/* Trennlinie */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 border-t border-border" />
+        <span className="text-xs text-muted-foreground">oder manuell per CSV</span>
+        <div className="flex-1 border-t border-border" />
       </div>
 
       {/* Hinweis */}
