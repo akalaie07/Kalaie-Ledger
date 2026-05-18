@@ -47,16 +47,26 @@ export function AblefyBackfillButton() {
           : "Alle alten Zahlungen importieren"}
       </button>
 
-      {result && (
-        <div
-          className={`rounded-md px-3 py-2.5 text-xs space-y-1 ${
-            result.success
-              ? "bg-green-500/10 text-green-400 border border-green-500/20"
-              : "bg-red-500/10 text-red-400 border border-red-500/20"
-          }`}
-        >
+      {result && !result.success && (
+        <div className="rounded-md px-3 py-2.5 text-xs space-y-2 bg-amber-500/10 text-amber-400 border border-amber-500/20">
           <div className="flex items-center gap-1.5 font-medium">
-            {result.success ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            Ablefy API antwortet nicht wie erwartet
+          </div>
+          <p className="opacity-80">
+            Die automatische API-Verbindung ist noch nicht verfügbar. Bitte importiere die historischen Zahlungen manuell per CSV-Export:
+          </p>
+          <ol className="opacity-80 space-y-0.5 list-decimal list-inside">
+            <li>In Ablefy: Statistiken → Transaktionen → Exportieren</li>
+            <li>Die heruntergeladene CSV-Datei unten hochladen</li>
+          </ol>
+        </div>
+      )}
+
+      {result && result.success && (
+        <div className="rounded-md px-3 py-2.5 text-xs space-y-1 bg-green-500/10 text-green-400 border border-green-500/20">
+          <div className="flex items-center gap-1.5 font-medium">
+            <CheckCircle className="h-3.5 w-3.5" />
             {result.message}
           </div>
           {result.errors.length > 0 && (
