@@ -6,9 +6,11 @@ import { Search } from "lucide-react";
 
 export function DealSearch({
   filter,
+  platform,
   defaultValue,
 }: {
   filter: string;
+  platform?: string;
   defaultValue?: string;
 }) {
   const router = useRouter();
@@ -21,6 +23,7 @@ export function DealSearch({
     timer.current = setTimeout(() => {
       const p = new URLSearchParams();
       if (filter !== "alle") p.set("filter", filter);
+      if (platform) p.set("platform", platform);
       if (val.trim()) p.set("q", val.trim());
       const qs = p.toString();
       router.push(`${pathname}${qs ? `?${qs}` : ""}`);

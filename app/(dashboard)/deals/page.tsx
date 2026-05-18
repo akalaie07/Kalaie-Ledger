@@ -10,6 +10,7 @@ import { hasFeature } from "@/lib/features";
 import { DealFilterTabs } from "./_components/deal-filter-tabs";
 import { DealSearch } from "./_components/deal-search";
 import { DealsTable } from "./_components/deals-table";
+import { PlatformFilter } from "./_components/platform-filter";
 import type { DealRowData } from "./_components/deals-table";
 
 export const metadata: Metadata = { title: "Deals — Buchhaltung" };
@@ -84,11 +85,11 @@ export default async function DealsPage({
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
-  const { filter = "alle", q = "" } = await searchParams;
+  const { filter = "alle", q = "", platform = "" } = await searchParams;
   const session = await requireSession();
   const supabase = await createClient();
 
-  const [{ data: deals }, { data: balance }] = await Promise.all([
+  const [{ data: deals }, { data: balance }, { data: platformsRaw }] = await Promise.all([
     supabase
       .from("deals")
       .select(
@@ -100,7 +101,14 @@ export default async function DealsPage({
       .from("deal_balance")
       .select("deal_id, paid_sum, open_sum, overdue_sum")
       .eq("organization_id", session.organizationId),
+    supabase
+      .from("platforms")
+      .select("name")
+      .eq("organization_id", session.organizationId)
+      .order("name"),
   ]);
+
+  const platformNames = (platformsRaw ?? []).map((p) => p.name).filter(Boolean);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allRows = (deals ?? []) as any[];
@@ -148,16 +156,25 @@ export default async function DealsPage({
       : allRows
     : allRows;
 
-  // Apply search filter
+  // Apply platform filter
+  const platformQuery = platform.toLowerCase().trim();
+  const platformRows = platformQuery
+    ? categoryRows.filter((d) =>
+        (d.platforms?.name ?? "").toLowerCase() === platformQuery,
+      )
+    : categoryRows;
+
+  // Apply search filter (inkl. Plattform-Name durchsuchbar)
   const searchQuery = q.toLowerCase().trim();
   const rows = searchQuery
-    ? categoryRows.filter((d) =>
+    ? platformRows.filter((d) =>
         d.customer_name.toLowerCase().includes(searchQuery) ||
         (d.order_id ?? "").toLowerCase().includes(searchQuery) ||
         (d.products?.name ?? "").toLowerCase().includes(searchQuery) ||
-        (d.closers?.name ?? "").toLowerCase().includes(searchQuery),
+        (d.closers?.name ?? "").toLowerCase().includes(searchQuery) ||
+        (d.platforms?.name ?? "").toLowerCase().includes(searchQuery),
       )
-    : categoryRows;
+    : platformRows;
 
   const dealIds = rows.map((d) => d.id);
 
@@ -258,10 +275,13 @@ export default async function DealsPage({
         </Link>
       </div>
 
-      {/* Filter tabs + Search */}
-      <div className="flex items-center justify-between gap-4">
+      {/* Filter tabs + Search + Platform */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <DealFilterTabs active={filter} counts={counts} showProductFilter={showProductFilter} />
-        <DealSearch filter={filter} defaultValue={q || undefined} />
+        <div className="flex items-center gap-2">
+          <PlatformFilter platforms={platformNames} active={platform} />
+          <DealSearch filter={filter} platform={platform} defaultValue={q || undefined} />
+        </div>
       </div>
 
       {/* KPI cards */}
