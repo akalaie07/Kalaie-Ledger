@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/get-current-org";
 import type { PreviewItem, NormalizedImportRow } from "@/lib/import/types";
+import { normName } from "@/lib/import/fuzzy";
+import { buildResolveMap } from "@/lib/import/resolve";
 
 // =============================================================================
 // Typen
@@ -127,6 +129,26 @@ export async function executeImport(
     (platforms ?? []).map((p) => [p.name.toLowerCase(), p.id]),
   );
 
+  // Produkt-Aliase laden → in der Vorschau bestätigte Zuordnungen automatisch anwenden.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: productAliasesRaw } = await (supabase as any)
+    .from("import_aliases")
+    .select("raw_value, target_id")
+    .eq("organization_id", organizationId)
+    .eq("entity_type", "product");
+  const productResolveMap = buildResolveMap(
+    (products ?? []).map((p) => ({ id: p.id, name: p.name })),
+    (productAliasesRaw ?? []).map((a: { raw_value: string; target_id: string }) => ({
+      rawValue: a.raw_value,
+      targetId: a.target_id,
+    })),
+  );
+  // Alias / exakter Name zuerst, sonst Fuzzy-Fallback (bisheriges Verhalten).
+  const resolveProductId = (rawName: string | null | undefined): string | null => {
+    if (!rawName) return null;
+    return productResolveMap.get(normName(rawName)) ?? findProductId(products, rawName);
+  };
+
   let created = 0;
   let paid = 0;
   let installmentsCreated = 0;
@@ -194,7 +216,7 @@ export async function executeImport(
       const platformId = rep.platformRawName
         ? (platformNameToId.get(rep.platformRawName.toLowerCase()) ?? null)
         : null;
-      const productId = findProductId(products, rep.productRawName ?? undefined);
+      const productId = resolveProductId(rep.productRawName);
 
       const paymentType: "one_time" | "installments" =
         rep.planType === "one_time" ? "one_time" : "installments";

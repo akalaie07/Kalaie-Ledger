@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentSession } from "@/lib/auth/get-current-org";
 import { parseDate } from "@/lib/utils/parse";
+import { normName } from "@/lib/import/fuzzy";
+import { buildResolveMap } from "@/lib/import/resolve";
 
 // =============================================================================
 // Typen
@@ -109,6 +111,26 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
     return list.find((x) => x.name.toLowerCase() === needle)?.id ?? null;
   }
 
+  // Produkt-Aliase laden (Smart Import) → in der Vorschau bestätigte Zuordnungen
+  // automatisch anwenden, sonst Fallback auf exakten Namen.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: productAliasesRaw } = await (supabase as any)
+    .from("import_aliases")
+    .select("raw_value, target_id")
+    .eq("organization_id", session.organizationId)
+    .eq("entity_type", "product");
+  const productResolveMap = buildResolveMap(
+    (products ?? []).map((p) => ({ id: p.id, name: p.name })),
+    (productAliasesRaw ?? []).map((a: { raw_value: string; target_id: string }) => ({
+      rawValue: a.raw_value,
+      targetId: a.target_id,
+    })),
+  );
+  const resolveProductId = (rawName: string | undefined): string | null => {
+    if (!rawName) return null;
+    return productResolveMap.get(normName(rawName)) ?? findId(products, rawName);
+  };
+
   let imported = 0;
   let updated = 0;
   let skipped = 0;
@@ -141,17 +163,29 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
     }
 
     const platform_id = findId(platforms, row.platform_name);
-    const product_id = findId(products, row.product_name);
+    const product_id = resolveProductId(row.product_name);
     const closer_id = findId(closers, row.closer_name);
 
     // ─── Prüfen ob Deal bereits existiert (anhand order_id) ─────────────────
     const order_id = row.order_id?.trim() || null;
-    let existingDeal: { id: string; payment_type: string } | null = null;
+    let existingDeal: {
+      id: string;
+      payment_type: string;
+      customer_name: string;
+      platform_id: string | null;
+      product_id: string | null;
+      closer_id: string | null;
+      total_price: number;
+      notes: string | null;
+      payment_method: string | null;
+    } | null = null;
 
     if (order_id) {
       const { data: found } = await supabase
         .from("deals")
-        .select("id, payment_type")
+        .select(
+          "id, payment_type, customer_name, platform_id, product_id, closer_id, total_price, notes, payment_method",
+        )
         .eq("organization_id", session.organizationId)
         .eq("order_id", order_id)
         .maybeSingle();
@@ -159,36 +193,66 @@ export async function importDeals(rows: ImportRow[]): Promise<ImportResult> {
     }
 
     if (existingDeal) {
-      // ─── UPDATE: Bestehenden Deal aktualisieren ──────────────────────────
-      const { error: updateErr } = await supabase
-        .from("deals")
-        .update({
-          customer_name: row.customer_name.trim(),
-          platform_id,
-          product_id,
-          closer_id,
-          total_price,
-          payment_type,
-          close_date,
-          ...(row.notes?.trim() ? { notes: row.notes.trim() } : {}),
-          ...(row.payment_method?.trim() ? { payment_method: row.payment_method.trim() } : {}),
-        })
-        .eq("id", existingDeal.id)
-        .eq("organization_id", session.organizationId);
+      // ─── UPDATE: Bestehenden Deal NUR ERGÄNZEN (leere Felder füllen) ─────
+      // Ein erneuter CSV-Import darf bereits gepflegte Daten NICHT verändern.
+      // Es werden ausschließlich Felder gesetzt, die im bestehenden Deal noch
+      // leer sind UND für die die CSV einen echten Wert liefert. Vorhandene
+      // Werte (Closer, Produkt, Preis, Name …) bleiben unangetastet.
+      const isPlaceholderName =
+        !existingDeal.customer_name.trim() ||
+        existingDeal.customer_name === "Unbekannt" ||
+        existingDeal.customer_name === "Unbekannt – bitte ergänzen";
 
-      if (updateErr) {
-        errors.push(`${rowLabel} (${row.customer_name}): Update fehlgeschlagen — ${updateErr.message}`);
-        skipped++;
-        continue;
+      const updatePayload: {
+        customer_name?: string;
+        platform_id?: string;
+        product_id?: string;
+        closer_id?: string;
+        total_price?: number;
+        notes?: string;
+        payment_method?: string;
+      } = {};
+
+      if (isPlaceholderName && row.customer_name.trim()) updatePayload.customer_name = row.customer_name.trim();
+      if (!existingDeal.platform_id && platform_id) updatePayload.platform_id = platform_id;
+      if (!existingDeal.product_id && product_id) updatePayload.product_id = product_id;
+      if (!existingDeal.closer_id && closer_id) updatePayload.closer_id = closer_id;
+      if (existingDeal.total_price === 0 && total_price > 0) updatePayload.total_price = total_price;
+      if (!existingDeal.notes?.trim() && row.notes?.trim()) updatePayload.notes = row.notes.trim();
+      if (!existingDeal.payment_method?.trim() && row.payment_method?.trim())
+        updatePayload.payment_method = row.payment_method.trim();
+      // close_date wird nie geändert: es ist immer gesetzt (Pflichtfeld), also nie "leer".
+
+      // payment_type wird bei bestehenden Deals bewusst NICHT automatisch geändert:
+      // ein Wechsel würde bestehende Raten / Einmalzahlungen verwaisen lassen.
+      if (payment_type !== existingDeal.payment_type) {
+        errors.push(
+          `${rowLabel} (${row.customer_name}): Zahlungsart-Wechsel (${existingDeal.payment_type} → ${payment_type}) übersprungen — bitte bei Bedarf manuell im Deal ändern.`,
+        );
       }
 
-      // Zahlungsstatus setzen falls bezahlt_raten angegeben
+      if (Object.keys(updatePayload).length > 0) {
+        const { error: updateErr } = await supabase
+          .from("deals")
+          .update(updatePayload)
+          .eq("id", existingDeal.id)
+          .eq("organization_id", session.organizationId);
+
+        if (updateErr) {
+          errors.push(`${rowLabel} (${row.customer_name}): Update fehlgeschlagen — ${updateErr.message}`);
+          skipped++;
+          continue;
+        }
+      }
+
+      // Zahlungsstatus setzen falls bezahlt_raten angegeben — anhand der
+      // BESTEHENDEN Zahlungsart, nicht der aus der CSV.
       if (row.bezahlt_raten) {
         await applyPaymentStatus(
           supabase,
           existingDeal.id,
           session.organizationId,
-          payment_type,
+          existingDeal.payment_type,
           row.bezahlt_raten,
         );
       }

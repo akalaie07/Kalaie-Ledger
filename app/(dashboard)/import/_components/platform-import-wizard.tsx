@@ -25,6 +25,9 @@ import { getImportFormOptions } from "@/lib/actions/import-form-options";
 import type { ImportFormOptions } from "@/lib/actions/import-form-options";
 import { createDealFromImport } from "@/lib/actions/create-deal-from-import";
 import type { CreateFromImportResult } from "@/lib/actions/create-deal-from-import";
+import { resolveImport, saveAliases } from "@/lib/actions/import-aliases";
+import type { EntityCandidate, ResolveResult } from "@/lib/import/resolve";
+import { ProductMappingStep } from "./product-mapping-step";
 import {
   parseCopecartExport,
   parseAblefyExport,
@@ -871,6 +874,11 @@ export function PlatformImportWizard({ platform }: { platform: SupportedPlatform
   const [itemDecisions, setItemDecisions] = useState<Map<string, ItemDecision>>(new Map());
   const [executeResult, setExecuteResult] = useState<ExecuteResult | null>(null);
 
+  // Produkt-Zuordnung (Smart Import)
+  const [productCandidates, setProductCandidates] = useState<EntityCandidate[]>([]);
+  const [productResults, setProductResults] = useState<ResolveResult[]>([]);
+  const [productMappings, setProductMappings] = useState<Map<string, string>>(new Map());
+
   // Queue-State für manuelles Abarbeiten
   const [manualQueue, setManualQueue] = useState<PreviewItem[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
@@ -948,11 +956,43 @@ export function PlatformImportWizard({ platform }: { platform: SupportedPlatform
   function handleLoadPreview() {
     if (normalized.length === 0) return;
     startPreviewTransition(async () => {
-      const items = await previewImport(normalized);
+      const rawProductNames = [
+        ...new Set(
+          normalized.map((r) => r.productRawName).filter((v): v is string => !!v),
+        ),
+      ];
+      const [items, resolution] = await Promise.all([
+        previewImport(normalized),
+        rawProductNames.length > 0
+          ? resolveImport("product", rawProductNames)
+          : Promise.resolve({ candidates: [], results: [] }),
+      ]);
+
       setPreviewItems(items);
       setItemDecisions(buildInitialDecisions(items));
+
+      setProductCandidates(resolution.candidates);
+      setProductResults(resolution.results);
+      const m = new Map<string, string>();
+      for (const r of resolution.results) {
+        if (r.status === "matched" && r.targetId) m.set(r.rawValue, r.targetId);
+        else if (r.status === "suggested" && r.suggestion) m.set(r.rawValue, r.suggestion.id);
+        else m.set(r.rawValue, "");
+      }
+      setProductMappings(m);
+
       setStep("preview");
     });
+  }
+
+  function handleProductMap(rawValue: string, targetId: string) {
+    setProductMappings((prev) => new Map(prev).set(rawValue, targetId));
+  }
+
+  function handleProductCreated(product: EntityCandidate) {
+    setProductCandidates((prev) =>
+      prev.some((c) => c.id === product.id) ? prev : [...prev, product],
+    );
   }
 
   // ── Import bestätigen ────────────────────────────────────────────────────────
@@ -968,6 +1008,18 @@ export function PlatformImportWizard({ platform }: { platform: SupportedPlatform
     if (toImport.length === 0) return;
 
     startImportTransition(async () => {
+      // Bestätigte Produkt-Zuordnungen als Alias speichern → greift beim Anlegen
+      // neuer Deals in executeImport und bei allen künftigen Importen.
+      const attention = new Set(
+        productResults.filter((r) => r.status !== "matched").map((r) => r.rawValue),
+      );
+      const aliasMappings = [...productMappings.entries()]
+        .filter(([rawValue, targetId]) => !!targetId && attention.has(rawValue))
+        .map(([rawValue, targetId]) => ({ rawValue, targetId }));
+      if (aliasMappings.length > 0) {
+        await saveAliases("product", aliasMappings);
+      }
+
       const result = await executeImport(toImport, fileName ?? undefined);
       setExecuteResult(result);
       setStep("done");
@@ -1024,6 +1076,9 @@ export function PlatformImportWizard({ platform }: { platform: SupportedPlatform
     setManualQueue([]);
     setQueueIndex(0);
     setFormOptions(null);
+    setProductCandidates([]);
+    setProductResults([]);
+    setProductMappings(new Map());
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -1203,6 +1258,15 @@ export function PlatformImportWizard({ platform }: { platform: SupportedPlatform
               <p className="text-lg font-semibold text-rose-400">{errorCount}</p>
             </div>
           </div>
+
+          {/* Produkt-Zuordnung (Smart Import) */}
+          <ProductMappingStep
+            candidates={productCandidates}
+            results={productResults}
+            mappings={productMappings}
+            onMap={handleProductMap}
+            onCreated={handleProductCreated}
+          />
 
           {/* Digistore-Hinweis */}
           {platform === "digistore" && (

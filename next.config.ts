@@ -25,7 +25,20 @@ const securityHeaders = [
   },
 ];
 
+// Eindeutige ID pro Deploy — Basis für den "Neue Version verfügbar"-Hinweis.
+// Auf Vercel: Commit-SHA; lokal/sonst: Zeitstempel beim Build.
+const buildId =
+  process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ??
+  process.env.BUILD_ID ??
+  `build-${Date.now()}`;
+
 const nextConfig: NextConfig = {
+  // Für Client (eingebacken) und Server (Laufzeit) verfügbar machen.
+  env: {
+    NEXT_PUBLIC_BUILD_ID: buildId,
+  },
+  generateBuildId: () => buildId,
+
   async headers() {
     return [
       {

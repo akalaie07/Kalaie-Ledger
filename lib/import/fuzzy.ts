@@ -50,7 +50,7 @@ function jaro(s1: string, s2: string): number {
   return (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3;
 }
 
-function jaroWinkler(s1: string, s2: string): number {
+export function jaroWinkler(s1: string, s2: string): number {
   const j = jaro(s1, s2);
   if (j < 0.7) return j;
   let prefix = 0;
@@ -62,7 +62,7 @@ function jaroWinkler(s1: string, s2: string): number {
   return j + prefix * 0.1 * (1 - j);
 }
 
-function normName(name: string): string {
+export function normName(name: string): string {
   return name
     .toLowerCase()
     .normalize("NFD")
@@ -111,9 +111,13 @@ export function findFuzzyMatches(
     }
 
     // 2. E-Mail-Übereinstimmung (Gewicht 0.3)
-    // DealContext hat keine customerEmail, aber wir können gar nichts matchen
-    // wenn die Import-Zeile eine E-Mail hat und wir keine zum Vergleich haben.
-    // (Für spätere Erweiterung wenn deals.customer_email hinzugefügt wird)
+    if (email && deal.customerEmail) {
+      const dealEmail = deal.customerEmail.toLowerCase().trim();
+      if (email === dealEmail) {
+        score += 0.3;
+        reasons.push("E-Mail stimmt überein");
+      }
+    }
 
     // 3. Betragsähnlichkeit (Gewicht 0.1)
     if (row.amount > 0 && deal.totalPrice > 0) {

@@ -12,6 +12,7 @@
  */
 
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Upload,
   FileText,
@@ -25,6 +26,9 @@ import {
 
 import { importDeals } from "@/lib/actions/import";
 import type { ImportRow, ImportResult } from "@/lib/actions/import";
+import { resolveImport, saveAliases } from "@/lib/actions/import-aliases";
+import type { EntityCandidate, ResolveResult } from "@/lib/import/resolve";
+import { ProductMappingStep } from "./product-mapping-step";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -341,6 +345,12 @@ export function CsvImportWizard({ config }: { config: PlatformConfig }) {
   const [isDragging, setIsDragging] = useState(false);
   const [importing, startImport] = useTransition();
 
+  // Produkt-Zuordnung (Smart Import)
+  const [productCandidates, setProductCandidates] = useState<EntityCandidate[]>([]);
+  const [productResults, setProductResults] = useState<ResolveResult[]>([]);
+  const [productMappings, setProductMappings] = useState<Map<string, string>>(new Map());
+  const [, startResolve] = useTransition();
+
   const fmt = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 
   // ── Schritt 1: Datei verarbeiten ─────────────────────────────────────────
@@ -454,6 +464,37 @@ export function CsvImportWizard({ config }: { config: PlatformConfig }) {
     setParseError(null);
     setEditableRows(rows);
     setStep("edit");
+
+    // Produkte aus dem Export gegen Stammdaten + Aliase auflösen
+    const rawNames = [...new Set(rows.map((r) => r.product_name).filter(Boolean))];
+    startResolve(async () => {
+      if (rawNames.length === 0) {
+        setProductCandidates([]);
+        setProductResults([]);
+        setProductMappings(new Map());
+        return;
+      }
+      const resolution = await resolveImport("product", rawNames);
+      setProductCandidates(resolution.candidates);
+      setProductResults(resolution.results);
+      const m = new Map<string, string>();
+      for (const r of resolution.results) {
+        if (r.status === "matched" && r.targetId) m.set(r.rawValue, r.targetId);
+        else if (r.status === "suggested" && r.suggestion) m.set(r.rawValue, r.suggestion.id);
+        else m.set(r.rawValue, "");
+      }
+      setProductMappings(m);
+    });
+  }
+
+  function handleProductMap(rawValue: string, targetId: string) {
+    setProductMappings((prev) => new Map(prev).set(rawValue, targetId));
+  }
+
+  function handleProductCreated(product: EntityCandidate) {
+    setProductCandidates((prev) =>
+      prev.some((c) => c.id === product.id) ? prev : [...prev, product],
+    );
   }
 
   // ── Schritt 3: Zeilen bearbeiten ─────────────────────────────────────────
@@ -488,6 +529,18 @@ export function CsvImportWizard({ config }: { config: PlatformConfig }) {
       }));
 
     startImport(async () => {
+      // Bestätigte Produkt-Zuordnungen als Alias speichern → greift sofort in
+      // importDeals und bei allen künftigen Importen automatisch.
+      const attention = new Set(
+        productResults.filter((r) => r.status !== "matched").map((r) => r.rawValue),
+      );
+      const aliasMappings = [...productMappings.entries()]
+        .filter(([rawValue, targetId]) => !!targetId && attention.has(rawValue))
+        .map(([rawValue, targetId]) => ({ rawValue, targetId }));
+      if (aliasMappings.length > 0) {
+        await saveAliases("product", aliasMappings);
+      }
+
       const res = await importDeals(toImport);
       setResult(res);
       setStep("done");
@@ -512,6 +565,9 @@ export function CsvImportWizard({ config }: { config: PlatformConfig }) {
     setEditableRows([]);
     setParseError(null);
     setResult(null);
+    setProductCandidates([]);
+    setProductResults([]);
+    setProductMappings(new Map());
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -904,6 +960,15 @@ export function CsvImportWizard({ config }: { config: PlatformConfig }) {
             </div>
           )}
 
+          {/* Produkt-Zuordnung (Smart Import) */}
+          <ProductMappingStep
+            candidates={productCandidates}
+            results={productResults}
+            mappings={productMappings}
+            onMap={handleProductMap}
+            onCreated={handleProductCreated}
+          />
+
           {/* Editierbare Tabelle */}
           <div className="rounded-lg border border-border overflow-hidden">
             <div className="overflow-x-auto">
@@ -1147,12 +1212,12 @@ export function CsvImportWizard({ config }: { config: PlatformConfig }) {
               Weiteren Import starten
             </Button>
             {(result.imported > 0 || result.updated > 0) && (
-              <a
+              <Link
                 href="/deals"
                 className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 Deals ansehen →
-              </a>
+              </Link>
             )}
           </div>
         </div>

@@ -625,6 +625,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      import_aliases: {
+        Row: {
+          id: string;
+          organization_id: string;
+          entity_type: "product" | "platform" | "closer";
+          raw_value: string;
+          target_id: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          entity_type: "product" | "platform" | "closer";
+          raw_value: string;
+          target_id: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          entity_type?: "product" | "platform" | "closer";
+          raw_value?: string;
+          target_id?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       deal_balance: {
