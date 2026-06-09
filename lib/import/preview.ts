@@ -31,6 +31,7 @@ export type DealContext = {
   id: string;
   orderId: string | null;
   customerName: string;
+  customerEmail: string | null;
   totalPrice: number;
   paymentType: "one_time" | "installments";
   productId: string | null;

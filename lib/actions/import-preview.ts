@@ -35,7 +35,7 @@ export async function previewImport(normalized: NormalizedImportRow[]): Promise<
     supabase.from("products").select("id, name").eq("organization_id", organizationId),
     supabase
       .from("deals")
-      .select("id, order_id, customer_name, total_price, payment_type, product_id, platform_id")
+      .select("id, order_id, customer_name, customer_email, total_price, payment_type, product_id, platform_id")
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .limit(500),
@@ -48,6 +48,7 @@ export async function previewImport(normalized: NormalizedImportRow[]): Promise<
     id: string;
     order_id: string | null;
     customer_name: string;
+    customer_email?: string | null;
     total_price: number;
     payment_type: string;
     product_id: string | null;
@@ -57,6 +58,7 @@ export async function previewImport(normalized: NormalizedImportRow[]): Promise<
       id: deal.id,
       orderId: deal.order_id,
       customerName: deal.customer_name,
+      customerEmail: deal.customer_email ?? null,
       totalPrice: deal.total_price,
       paymentType: deal.payment_type as "one_time" | "installments",
       productId: deal.product_id ?? null,
