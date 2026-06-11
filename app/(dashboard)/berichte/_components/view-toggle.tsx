@@ -1,16 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 export function ViewToggle({ view }: { view: "monthly" | "yearly" }) {
   const router = useRouter();
+  // Pfadrelativ wechseln — die Komponente wird sowohl unter /berichte als auch
+  // unter /analyse/berichte verwendet und darf die Seite nicht wechseln.
+  const pathname = usePathname();
 
   return (
     <div className="flex rounded-md border border-border overflow-hidden text-sm">
       <button
         type="button"
-        onClick={() => router.push("/berichte?view=monthly")}
+        onClick={() => router.push(`${pathname}?view=monthly`)}
         className={cn(
           "px-4 py-1.5 font-medium transition-colors",
           view === "monthly"
@@ -22,7 +25,7 @@ export function ViewToggle({ view }: { view: "monthly" | "yearly" }) {
       </button>
       <button
         type="button"
-        onClick={() => router.push("/berichte?view=yearly")}
+        onClick={() => router.push(`${pathname}?view=yearly`)}
         className={cn(
           "px-4 py-1.5 font-medium transition-colors border-l border-border",
           view === "yearly"

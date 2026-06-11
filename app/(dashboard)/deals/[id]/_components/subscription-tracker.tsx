@@ -179,10 +179,11 @@ export function SubscriptionTracker({
                     <button
                       onClick={() => handleToggle(p)}
                       disabled={pending}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                      title={p.paid ? "Klicken, um als offen zu markieren" : "Klicken, um als bezahlt zu markieren"}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all cursor-pointer hover:ring-2 hover:ring-offset-1 disabled:opacity-50 ${
                         p.paid
-                          ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
-                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 hover:ring-emerald-500/40"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80 hover:ring-border"
                       }`}
                     >
                       {p.paid ? (

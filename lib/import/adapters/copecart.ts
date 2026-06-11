@@ -1,5 +1,5 @@
 import {
-  parseLine,
+  parseCsvRows,
   lc,
   parseGermanPrice,
   parseDate,
@@ -61,10 +61,8 @@ function mapPlan(rawPlan: string): PlanInfo {
  *   installment_sequence behandelt (Abo-Zahlungsnummern sind keine Raten).
  */
 export function parseCopecartExport(text: string): NormalizedImportRow[] {
-  const lines = text.split("\n").filter((l) => l.trim());
-  if (lines.length < 2) return [];
-
-  const headers = parseLine(lines[0], ",");
+  const { headers, rows } = parseCsvRows(text, ",");
+  if (!headers.length || rows.length === 0) return [];
 
   const idxId = findColIdx(headers, "bestell-id", "bestellnummer", "order id", "order-id");
   const idxStatus = findColIdx(headers, "status");
@@ -109,8 +107,8 @@ export function parseCopecartExport(text: string): NormalizedImportRow[] {
 
   const result: NormalizedImportRow[] = [];
 
-  for (let rowIdx = 1; rowIdx < lines.length; rowIdx++) {
-    const cols = parseLine(lines[rowIdx], ",");
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const cols = rows[rowIdx];
     const get = (i: number) => (i >= 0 ? (cols[i]?.trim() ?? "") : "");
 
     const orderId = get(idxId);
@@ -179,7 +177,7 @@ export function parseCopecartExport(text: string): NormalizedImportRow[] {
 
     result.push({
       source: "copecart",
-      rowNumber: rowIdx + 1,
+      rowNumber: rowIdx + 2,
       externalOrderId: orderId,
       externalTransactionId: trxId,
       externalInstallmentId: null,

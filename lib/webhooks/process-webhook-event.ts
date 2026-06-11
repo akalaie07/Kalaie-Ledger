@@ -21,7 +21,9 @@ export async function processWebhookEvent(
   const orderId = normalized.externalOrderId;
 
   // ── DB-Kontext laden (Deals + Zahlungs-Records) ───────────────────────────
-  const [{ data: platforms }, { data: products }, { data: allDealsRaw }] = await Promise.all([
+  // Der exakte Bestell-ID-Match läuft als eigene gezielte Query — der
+  // 500er-Pool ist nur für Fuzzy-Matching und darf den Treffer nicht begrenzen.
+  const [{ data: platforms }, { data: products }, { data: allDealsRaw }, { data: exactDealsRaw }] = await Promise.all([
     supabase.from("platforms").select("id, name").eq("organization_id", organizationId),
     supabase.from("products").select("id, name").eq("organization_id", organizationId),
     supabase
@@ -30,6 +32,12 @@ export async function processWebhookEvent(
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .limit(500),
+    supabase
+      .from("deals")
+      .select("id, order_id, customer_name, customer_email, total_price, payment_type, product_id, platform_id")
+      .eq("organization_id", organizationId)
+      .eq("order_id", orderId)
+      .limit(1),
   ]);
 
   const platformMap = new Map((platforms ?? []).map((p) => [p.id, p.name]));
@@ -63,9 +71,9 @@ export async function processWebhookEvent(
   }
 
   const allDeals = (allDealsRaw ?? []).map(buildDealContext);
-  const matchingDeal = (allDealsRaw ?? []).find((d) => d.order_id === orderId);
+  const matchingDeal = exactDealsRaw?.[0] ?? null;
 
-  let dealsByOrderId = new Map<string, DealContext>();
+  const dealsByOrderId = new Map<string, DealContext>();
 
   if (matchingDeal) {
     const [{ data: installmentsRaw }, { data: otpRaw }] = await Promise.all([

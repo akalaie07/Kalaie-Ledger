@@ -80,7 +80,15 @@ export function LoginForm({ next }: { next?: string }) {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="password">Passwort</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Passwort</Label>
+          <Link
+            href="/passwort-vergessen"
+            className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Passwort vergessen?
+          </Link>
+        </div>
         <Input
           id="password"
           name="password"

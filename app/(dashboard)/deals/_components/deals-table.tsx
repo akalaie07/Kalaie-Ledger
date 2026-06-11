@@ -38,7 +38,10 @@ export type DealRowData = {
   inst_paid: number;
   inst_open_amount: number;
   inst_current_month_paid: boolean | null;
-  sub_current_month_paid: boolean | null;
+  /** Abo: Status des aktuellen Zeitraums (Monat bzw. Jahr).
+   *  "upcoming" = Abo startet erst in der Zukunft. */
+  sub_current_period: "paid" | "open" | "upcoming" | null;
+  sub_start_date: string | null;
 };
 
 // =============================================================================
@@ -387,7 +390,7 @@ export function DealsTable({
                         (() => {
                           const regPaid = deal.otp_paid;
                           const hasRegFee = deal.total_price > 0;
-                          const curMonth = deal.sub_current_month_paid;
+                          const curPeriod = deal.sub_current_period;
                           return (
                             <>
                               {hasRegFee ? (
@@ -406,11 +409,19 @@ export function DealsTable({
                               ) : (
                                 <span className="text-muted-foreground/40 text-xs">Keine Anm.-Geb.</span>
                               )}
-                              {curMonth !== null && (
-                                <p className={cn("text-xs font-medium", curMonth ? "text-emerald-400" : "text-rose-400")}>
-                                  {curMonth ? "Akt. Monat bezahlt" : "Akt. Monat offen"}
+                              {curPeriod === "upcoming" ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {deal.sub_start_date
+                                    ? `Abo startet ${format(new Date(deal.sub_start_date), "dd.MM.yyyy", { locale: de })}`
+                                    : "Abo noch nicht gestartet"}
                                 </p>
-                              )}
+                              ) : curPeriod !== null ? (
+                                <p className={cn("text-xs font-medium", curPeriod === "paid" ? "text-emerald-400" : "text-rose-400")}>
+                                  {deal.payment_type === "subscription_yearly"
+                                    ? curPeriod === "paid" ? "Akt. Jahr bezahlt" : "Akt. Jahr offen"
+                                    : curPeriod === "paid" ? "Akt. Monat bezahlt" : "Akt. Monat offen"}
+                                </p>
+                              ) : null}
                               {deal.chargeback && (
                                 <p className="text-xs font-medium text-amber-500">Rückbuchung</p>
                               )}

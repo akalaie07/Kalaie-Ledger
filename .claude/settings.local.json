@@ -19,7 +19,14 @@
       "Bash(git commit -m 'Remove middleware.ts — proxy.ts already handles session in Next.js 16 *)",
       "Bash(git commit -m ' *)",
       "mcp__Claude_in_Chrome__computer",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(Get-ChildItem -Recurse -Filter \"*rodukt*\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "Bash(git commit *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\sfaka\\\\Desktop\\\\Amir Kalaie\\\\Projekte\\\\Buchhaltung\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(Format-Table FullName)",
+      "Bash(git revert *)"
     ]
   }
 }

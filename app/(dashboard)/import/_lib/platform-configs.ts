@@ -93,15 +93,56 @@ export function autoDetectCopecart(headers: string[]): ColumnMap {
 }
 
 export function copecartFilterPaid(row: Pick<EditableRow, "_rawStatus">): boolean {
-  const s = row._rawStatus.toLowerCase();
+  const s = row._rawStatus.toLowerCase().trim();
+  // Exact matches only to avoid "nicht bezahlt" or "teilweise bezahlt" slipping through
   return (
     s === "abgeschlossen" ||
     s === "completed" ||
     s === "bezahlt" ||
-    s.includes("bezahlt") ||
+    s === "erfolgreich" ||
+    s === "paid" ||
+    s === "complete"
+  );
+}
+
+// =============================================================================
+// Ablefy
+// =============================================================================
+
+export function autoDetectAblefy(headers: string[]): ColumnMap {
+  const norm = headers.map(normHeader);
+
+  function find(...patterns: string[]): number {
+    for (const pat of patterns) {
+      const p = normHeader(pat);
+      const i = norm.findIndex((h) => h === p || h.includes(p));
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  return {
+    // Ablefy splits buyer name into KAEUFER VORNAME / KAEUFER NACHNAME
+    customerFirst: find("kaeufer vorname", "kaeuferin vorname", "vorname"),
+    customerLast: find("kaeufer nachname", "kaeuferin nachname", "nachname"),
+    orderId: find("bestell-id", "bestellnummer", "bestell id"),
+    product: find("produktname", "produkt"),
+    totalPrice: find("bezahlt", "faelliger betrag", "fälliger betrag", "gesamtbetrag", "betrag"),
+    paymentType: find("typ", "zahlungsplan", "plan"),
+    date: find("datum", "erstellt am", "transaktionsdatum", "zahlungsdatum"),
+    status: find("status"),
+  };
+}
+
+export function ablefyFilterPaid(row: Pick<EditableRow, "_rawStatus">): boolean {
+  const s = row._rawStatus.toLowerCase().trim();
+  // Only show rows that represent a successful payment
+  return (
     s.includes("erfolgreich") ||
-    s.includes("paid") ||
-    s.includes("complete")
+    s.includes("bezahlt") ||
+    s.includes("abgeschlossen") ||
+    s === "paid" ||
+    s === "completed"
   );
 }
 
@@ -112,6 +153,7 @@ export function copecartFilterPaid(row: Pick<EditableRow, "_rawStatus">): boolea
 export const PLATFORM_AUTO_DETECT: Record<string, (headers: string[]) => ColumnMap> = {
   digistore: autoDetectDigistore,
   copecart: autoDetectCopecart,
+  ablefy: autoDetectAblefy,
 };
 
 export const PLATFORM_FILTER_PAID: Record<
@@ -120,4 +162,5 @@ export const PLATFORM_FILTER_PAID: Record<
 > = {
   digistore: digistoreFilterPaid,
   copecart: copecartFilterPaid,
+  ablefy: ablefyFilterPaid,
 };

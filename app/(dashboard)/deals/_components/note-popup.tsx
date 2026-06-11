@@ -14,6 +14,7 @@ export function NotePopup({
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(notes ?? "");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const popupRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -36,8 +37,13 @@ export function NotePopup({
   }, [open]);
 
   function handleSave() {
+    setError(null);
     startTransition(async () => {
-      await updateDealNote(dealId, value);
+      const res = await updateDealNote(dealId, value);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
       setSaved(true);
       setTimeout(() => {
         setSaved(false);
@@ -90,6 +96,10 @@ export function NotePopup({
               className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
+
+          {error && (
+            <p className="px-3 pb-2 text-xs text-destructive">{error}</p>
+          )}
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">

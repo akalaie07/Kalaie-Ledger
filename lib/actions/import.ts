@@ -406,6 +406,9 @@ export async function processPaymentExport(rows: AbgleichRow[]): Promise<Abgleic
   if (!session) return {
     updated: 0, enriched: 0, created: 0, skipped: 0, refunded: 0, failed: 0, notFound: [], errors: ["Nicht angemeldet."],
   };
+  if (session.role !== "admin") return {
+    updated: 0, enriched: 0, created: 0, skipped: 0, refunded: 0, failed: 0, notFound: [], errors: ["Nur Admins können Zahlungsimporte ausführen."],
+  };
 
   const supabase = await createClient();
 

@@ -792,7 +792,7 @@ export type Database = {
           open_sum: number;
           overdue_sum: number;
           has_overdue: boolean;
-          computed_status: "paid" | "open" | "overdue" | "in_collection";
+          computed_status: "paid" | "open" | "overdue" | "in_collection" | "cancelled";
         };
         Relationships: [];
       };
@@ -807,7 +807,7 @@ export type Database = {
           open_sum: number;
           overdue_sum: number;
           has_overdue: boolean;
-          computed_status: "paid" | "open" | "overdue" | "in_collection";
+          computed_status: "paid" | "open" | "overdue" | "in_collection" | "cancelled";
         };
         Relationships: [];
       };

@@ -37,9 +37,8 @@ export default async function DealEditPage({
         .order("name"),
       supabase
         .from("products")
-        .select("id, name, product_type, registration_fee_options, default_recurring_price, default_price")
+        .select("id, name, product_type, registration_fee_options, default_recurring_price, default_price, active")
         .eq("organization_id", session.organizationId)
-        .eq("active", true)
         .order("name"),
       supabase
         .from("closers")
@@ -61,6 +60,14 @@ export default async function DealEditPage({
 
   if (!deal) notFound();
 
+  // Inaktive Produkte ausblenden — außer dem aktuell zugeordneten Produkt des
+  // Deals, sonst verliert das Formular Produkt-Zuordnung und Abo-Typ.
+  const selectableProducts = (products ?? [])
+    .filter((p) => p.active || p.id === deal.product_id)
+    .map((p) =>
+      p.active ? p : { ...p, name: `${p.name} (inaktiv)` },
+    );
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
       <div>
@@ -78,7 +85,7 @@ export default async function DealEditPage({
       <DealEditForm
         dealId={id}
         platforms={platforms ?? []}
-        products={(products ?? []) as unknown as ProductOption[]}
+        products={selectableProducts as unknown as ProductOption[]}
         closers={closers ?? []}
         initial={{
           customer_name: deal.customer_name,

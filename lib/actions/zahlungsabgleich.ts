@@ -146,18 +146,31 @@ export async function processZahlungsabgleich(rows: AbgleichRow[]): Promise<Abgl
           updated++;
         }
       } else {
-        // No sequence info: mark all unpaid installments as paid
-        const { error } = await supabase
+        // No sequence info: mark only the next unpaid installment (lowest sequence) as paid
+        const { data: nextUnpaid } = await supabase
           .from("installments")
-          .update({ paid: true, paid_at: new Date().toISOString() })
+          .select("id")
           .eq("deal_id", deal.id)
           .eq("organization_id", session.organizationId)
-          .eq("paid", false);
+          .eq("paid", false)
+          .order("sequence", { ascending: true })
+          .limit(1)
+          .maybeSingle();
 
-        if (error) {
-          errors.push(`${row.order_id}: ${error.message}`);
+        if (!nextUnpaid) {
+          skipped++;
         } else {
-          updated++;
+          const { error } = await supabase
+            .from("installments")
+            .update({ paid: true, paid_at: new Date().toISOString() })
+            .eq("id", nextUnpaid.id)
+            .eq("organization_id", session.organizationId);
+
+          if (error) {
+            errors.push(`${row.order_id}: ${error.message}`);
+          } else {
+            updated++;
+          }
         }
       }
     }

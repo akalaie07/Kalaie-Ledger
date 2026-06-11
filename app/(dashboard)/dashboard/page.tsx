@@ -122,7 +122,7 @@ export default async function DashboardPage() {
 
         {/* Ist-Umsatz */}
         {isAdmin && (
-          <Link href="/analyse/berichte" className="group rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-1 hover:bg-emerald-500/10 transition-colors">
+          <Link href="/berichte" className="group rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-1 hover:bg-emerald-500/10 transition-colors">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Eingenommen</p>
               <TrendingUp className="h-4 w-4 text-emerald-400" />
@@ -212,7 +212,7 @@ export default async function DashboardPage() {
           )}
           {isAdmin && (
             <Link
-              href="/analyse/berichte"
+              href="/berichte"
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:border-foreground/30 hover:bg-muted/20 transition-colors"
             >
               <TrendingUp className="h-4 w-4" />

@@ -2,6 +2,34 @@
 // Gemeinsame Parser-Hilfsfunktionen für alle Platform-Adapter
 // =============================================================================
 
+import Papa from "papaparse";
+
+/**
+ * Parst kompletten CSV-Text robust mit PapaParse.
+ * Im Gegensatz zum zeilenweisen Splitten überlebt das auch Felder mit
+ * eingebetteten Zeilenumbrüchen, Quotes und Delimiter-Zeichen im Inhalt.
+ * Header und Zellen werden getrimmt, BOM wird entfernt.
+ */
+export function parseCsvRows(
+  text: string,
+  delimiter: string,
+): { headers: string[]; rows: string[][] } {
+  const clean = text.replace(/^﻿/, "");
+  const result = Papa.parse<string[]>(clean, {
+    delimiter,
+    skipEmptyLines: "greedy",
+    header: false,
+  });
+  const matrix = result.data.filter((r): r is string[] => Array.isArray(r));
+  if (matrix.length === 0) return { headers: [], rows: [] };
+  const headers = matrix[0].map((h) => String(h ?? "").trim());
+  const rows = matrix
+    .slice(1)
+    .map((r) => r.map((c) => String(c ?? "").trim()))
+    .filter((r) => r.some((c) => c !== ""));
+  return { headers, rows };
+}
+
 /** Parst eine CSV-Zeile korrekt (mit Quote-Unterstützung). */
 export function parseLine(line: string, delimiter: string): string[] {
   const result: string[] = [];

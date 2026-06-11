@@ -85,8 +85,14 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
     paymentTypeToModel(initial.payment_type),
   );
   const [selectedProductId, setSelectedProductId] = useState(initial.product_id ?? "");
+  // Fallback auf den payment_type des Deals: auch wenn das Produkt fehlt oder
+  // nicht (mehr) in der Liste ist, darf ein Abo-Deal nicht als "standard"
+  // behandelt werden — sonst würde Speichern ihn zur Einmalzahlung degradieren.
   const [selectedProductType, setSelectedProductType] = useState<ProductOption["product_type"]>(
-    initialProduct?.product_type ?? "standard",
+    initialProduct?.product_type ??
+      (initial.payment_type === "subscription_monthly" || initial.payment_type === "subscription_yearly"
+        ? initial.payment_type
+        : "standard"),
   );
 
   // ── Einmalzahlung ──
@@ -366,9 +372,6 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
               <input type="hidden" name="subscription_start_date" value={subscriptionStart} />
             )}
           </>
-        )}
-        {paymentModel === "abo" && (
-          <input type="hidden" name="payment_method" value={paymentMethod} />
         )}
 
         {/* Abschlussdatum */}
@@ -831,6 +834,21 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                       />
                     </td>
                   </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Zahlart</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        name="payment_method"
+                        placeholder="z.B. SEPA-Lastschrift, Kreditkarte"
+                        value={paymentMethod}
+                        onChange={(e) => {
+                          setPaymentMethod(e.target.value);
+                          lsSave("paymentMethod", e.target.value);
+                        }}
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -958,7 +976,14 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
         <Button type="submit" disabled={pending}>
           {pending ? "Wird gespeichert…" : "Änderungen speichern"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => history.back()}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            clearDraft();
+            history.back();
+          }}
+        >
           Abbrechen
         </Button>
       </div>

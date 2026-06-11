@@ -1,5 +1,5 @@
 import {
-  parseLine,
+  parseCsvRows,
   lc,
   parseGermanPrice,
   parseDate,
@@ -96,11 +96,8 @@ function mapZahlungsstatus(zahlungsstatus: string, abrechnungstyp: string): Stat
  * - Einzelne Raten-Sequenz wird NICHT gesetzt (kein Transaktions-Export).
  */
 export function parseDigistoreExport(text: string): NormalizedImportRow[] {
-  const lines = text.split("\n").filter((l) => l.trim());
-  if (lines.length < 2) return [];
-
-  const headers = parseLine(lines[0], ";");
-  if (!headers.length) return [];
+  const { headers, rows } = parseCsvRows(text, ";");
+  if (!headers.length || rows.length === 0) return [];
 
   const idxId = findColIdx(headers, "bestell-id", "bestellnummer", "order-id");
   if (idxId < 0) return [];
@@ -133,8 +130,8 @@ export function parseDigistoreExport(text: string): NormalizedImportRow[] {
 
   const result: NormalizedImportRow[] = [];
 
-  for (let rowIdx = 1; rowIdx < lines.length; rowIdx++) {
-    const cols = parseLine(lines[rowIdx], ";");
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const cols = rows[rowIdx];
     const get = (i: number) => (i >= 0 ? (cols[i]?.trim() ?? "") : "");
 
     const orderId = get(idxId);
@@ -198,7 +195,7 @@ export function parseDigistoreExport(text: string): NormalizedImportRow[] {
 
     result.push({
       source: "digistore",
-      rowNumber: rowIdx + 1,
+      rowNumber: rowIdx + 2,
       externalOrderId: orderId,
       externalTransactionId: null,
       externalInstallmentId: null,

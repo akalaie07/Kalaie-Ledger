@@ -15,10 +15,16 @@ export function MahnungNoteEditor({
   const [value, setValue] = useState(notes ?? "");
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function save() {
+    setError(null);
     startTransition(async () => {
-      await updateDealNote(dealId, value);
+      const res = await updateDealNote(dealId, value);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
       setSaved(true);
       setTimeout(() => { setSaved(false); setOpen(false); }, 1200);
     });
@@ -41,6 +47,9 @@ export function MahnungNoteEditor({
 
   return (
     <div className="flex items-start gap-1.5">
+      {error && (
+        <p className="text-xs text-destructive max-w-[180px]">{error}</p>
+      )}
       <textarea
         autoFocus
         value={value}

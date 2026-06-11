@@ -309,22 +309,67 @@ export async function updateDeal(
 
   if (error) return { error: "Änderungen konnten nicht gespeichert werden." };
 
-  // Fälligkeitsdatum der Einmalzahlung aktualisieren
+  // ── Zahlungs-Records mit dem (ggf. gewechselten) Zahlungsmodell abgleichen ──
+  // Beim Modell-Wechsel werden verwaiste UNbezahlte Records der anderen Modelle
+  // entfernt und fehlende Records des neuen Modells angelegt. Bezahlte Records
+  // bleiben als Historie stehen — der Saldo (deal_balance) zählt ohnehin nur
+  // die zum payment_type passenden Einträge.
+
   if (dealFields.payment_type === "one_time") {
     await supabase
-      .from("one_time_payments")
-      .update({ due_date: one_time_due_date ?? null })
-      .eq("deal_id", id)
-      .eq("organization_id", session.organizationId);
-  }
-
-  // Anmeldegebühr-Status für Abo aktualisieren
-  if (isSubscription) {
-    const { data: existingOtp } = await supabase
-      .from("one_time_payments")
-      .select("paid")
+      .from("installments")
+      .delete()
       .eq("deal_id", id)
       .eq("organization_id", session.organizationId)
+      .eq("paid", false);
+    await supabase
+      .from("subscription_payments")
+      .delete()
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId)
+      .eq("paid", false);
+
+    // Zahlungs-Record sicherstellen — ohne ihn fehlt der "Zahlung"-Block und
+    // der Deal kann nie als bezahlt markiert werden (passierte beim Wechsel
+    // von Raten/Abo auf Einmalzahlung). one_time_payments ist 1:1 über deal_id.
+    const { data: existingOtp } = await supabase
+      .from("one_time_payments")
+      .select("deal_id")
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingOtp) {
+      await supabase
+        .from("one_time_payments")
+        .update({ due_date: one_time_due_date ?? null })
+        .eq("deal_id", id)
+        .eq("organization_id", session.organizationId);
+    } else {
+      await supabase.from("one_time_payments").insert({
+        deal_id: id,
+        organization_id: session.organizationId,
+        due_date: one_time_due_date ?? null,
+      });
+    }
+  }
+
+  if (isSubscription) {
+    await supabase
+      .from("installments")
+      .delete()
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId)
+      .eq("paid", false);
+
+    // Anmeldegebühr-Status aktualisieren bzw. anlegen
+    const { data: existingOtp } = await supabase
+      .from("one_time_payments")
+      .select("deal_id")
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId)
+      .limit(1)
       .maybeSingle();
 
     if (existingOtp) {
@@ -340,8 +385,32 @@ export async function updateDeal(
       await supabase.from("one_time_payments").insert({
         deal_id: id,
         organization_id: session.organizationId,
+        due_date: subscription_start_date ?? null,
         paid: reg_fee_paid ?? false,
         paid_at: reg_fee_paid ? new Date().toISOString() : null,
+      });
+    }
+
+    // Ersten Abo-Zeitraum anlegen falls noch keiner existiert — wie beim
+    // Anlegen (sonst bleibt die Abo-Tabelle nach einem Typ-Wechsel leer).
+    const { count: subCount } = await supabase
+      .from("subscription_payments")
+      .select("id", { count: "exact", head: true })
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId);
+
+    if (
+      (subCount ?? 0) === 0 &&
+      subscription_start_date &&
+      recurring_amount &&
+      recurring_amount > 0
+    ) {
+      await supabase.from("subscription_payments").insert({
+        deal_id: id,
+        organization_id: session.organizationId,
+        sequence: 1,
+        due_date: subscription_start_date,
+        amount: recurring_amount,
       });
     }
   }
@@ -352,6 +421,13 @@ export async function updateDeal(
     if (installmentTotal < 0) {
       return { error: "Anzahlung darf den Gesamtpreis nicht übersteigen." };
     }
+
+    await supabase
+      .from("subscription_payments")
+      .delete()
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId)
+      .eq("paid", false);
 
     // Bestehende Raten löschen
     const { error: deleteError } = await supabase
@@ -370,22 +446,32 @@ export async function updateDeal(
     );
     await supabase.from("installments").insert(rows);
 
-    // Anzahlung-Tracking: one_time_payment upserten wenn Anzahlung vorhanden
-    if ((down_payment ?? 0) > 0) {
-      const { data: existing } = await supabase
-        .from("one_time_payments")
-        .select("id")
-        .eq("deal_id", id)
-        .eq("organization_id", session.organizationId)
-        .maybeSingle();
+    // Anzahlung-Tracking: one_time_payment upserten wenn Anzahlung vorhanden,
+    // sonst verwaiste unbezahlte Records entfernen (würden als "Anzahlung"-Block
+    // ohne Anzahlung angezeigt).
+    const { data: existing } = await supabase
+      .from("one_time_payments")
+      .select("deal_id")
+      .eq("deal_id", id)
+      .eq("organization_id", session.organizationId)
+      .limit(1)
+      .maybeSingle();
 
+    if ((down_payment ?? 0) > 0) {
       if (!existing) {
         await supabase.from("one_time_payments").insert({
           deal_id: id,
           organization_id: session.organizationId,
-          due_date: first_due_date,
+          due_date: one_time_due_date ?? first_due_date,
         });
       }
+    } else if (existing) {
+      await supabase
+        .from("one_time_payments")
+        .delete()
+        .eq("deal_id", id)
+        .eq("organization_id", session.organizationId)
+        .eq("paid", false);
     }
   }
 

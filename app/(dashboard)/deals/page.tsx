@@ -205,11 +205,22 @@ export default async function DealsPage({
     });
   }
 
-  // Abo: aktueller Monat bezahlt?
+  // Abo: aktueller Zeitraum bezahlt?
+  // Monats-Abo → Kalendermonat; Jahres-Abo → Kalenderjahr (sonst zeigt ein
+  // Jahres-Abo 11 Monate lang gar nichts). Bei mehreren Zahlungen im
+  // Zeitraum gewinnt "bezahlt".
+  const currentYear = currentYearMonth.slice(0, 4);
+  const dealTypeMap = new Map(rows.map((d) => [d.id, d.payment_type]));
   const subPayMap = new Map<string, boolean | null>();
   for (const s of subPayRows ?? []) {
-    const isCurrentMonth = (s.due_date as string)?.slice(0, 7) === currentYearMonth;
-    if (isCurrentMonth) subPayMap.set(s.deal_id, s.paid as boolean);
+    const due = (s.due_date as string) ?? "";
+    const isYearly = dealTypeMap.get(s.deal_id) === "subscription_yearly";
+    const inWindow = isYearly
+      ? due.slice(0, 4) === currentYear
+      : due.slice(0, 7) === currentYearMonth;
+    if (inWindow && subPayMap.get(s.deal_id) !== true) {
+      subPayMap.set(s.deal_id, s.paid as boolean);
+    }
   }
 
   const isAdmin = session.role === "admin";
@@ -224,10 +235,31 @@ export default async function DealsPage({
   const overdueSum = bal.reduce((s, b) => s + (Number(b.overdue_sum) || 0), 0);
   const totalRevenue = paidSum + openSum;
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   const dealRows: DealRowData[] = rows.map((d) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const da = d as any;
     const inst = instMap.get(d.id);
+
+    // Abo-Status für den aktuellen Zeitraum — immer ein Wert, nie "nichts":
+    // Eintrag im Zeitraum vorhanden → bezahlt/offen; Abo-Start in der Zukunft
+    // → "upcoming"; sonst (Abo läuft, aber kein Eintrag erfasst) → offen.
+    const isAbo =
+      d.payment_type === "subscription_monthly" ||
+      d.payment_type === "subscription_yearly";
+    const subStartDate = (da.subscription_start_date as string | null) ?? null;
+    const inWindow = subPayMap.get(d.id);
+    const subCurrentPeriod: DealRowData["sub_current_period"] = !isAbo
+      ? null
+      : inWindow !== undefined && inWindow !== null
+      ? inWindow
+        ? "paid"
+        : "open"
+      : subStartDate && subStartDate > todayIso
+      ? "upcoming"
+      : "open";
+
     return {
       id: d.id,
       customer_name: d.customer_name,
@@ -255,7 +287,8 @@ export default async function DealsPage({
       inst_paid: inst?.paid ?? 0,
       inst_open_amount: inst?.openAmount ?? 0,
       inst_current_month_paid: inst?.currentMonthPaid ?? null,
-      sub_current_month_paid: subPayMap.get(d.id) ?? null,
+      sub_current_period: subCurrentPeriod,
+      sub_start_date: subStartDate,
     };
   });
 

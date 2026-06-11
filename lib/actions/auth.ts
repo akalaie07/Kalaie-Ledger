@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -202,6 +203,96 @@ export async function signOut(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+const RequestResetSchema = z.object({
+  email: z.string().email("Ungültige E-Mail-Adresse.").trim().toLowerCase(),
+});
+
+const UpdatePasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, "Mindestens 8 Zeichen.")
+      .regex(/[a-zA-Z]/, "Muss einen Buchstaben enthalten.")
+      .regex(/[0-9]/, "Muss eine Zahl enthalten."),
+    password_confirm: z.string(),
+  })
+  .refine((d) => d.password === d.password_confirm, {
+    message: "Die Passwörter stimmen nicht überein.",
+    path: ["password_confirm"],
+  });
+
+export async function requestPasswordReset(
+  _prevState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const result = RequestResetSchema.safeParse({ email: formData.get("email") });
+  if (!result.success) {
+    return { fieldErrors: result.error.flatten().fieldErrors };
+  }
+
+  const captchaToken = formData.get("h-captcha-response") as string | null;
+  const hdrs = await headers();
+  const origin =
+    hdrs.get("origin") ??
+    `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host")}`;
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(result.data.email, {
+    redirectTo: `${origin}/auth/callback?next=/passwort-aendern`,
+    captchaToken: captchaToken ?? undefined,
+  });
+
+  if (error) {
+    return {
+      error:
+        "E-Mail konnte nicht gesendet werden. Bitte versuche es in ein paar Minuten erneut.",
+    };
+  }
+
+  // Bewusst immer dieselbe Meldung — verrät nicht, ob die E-Mail existiert.
+  return {
+    message:
+      "Falls ein Konto mit dieser E-Mail existiert, haben wir dir einen Link zum Zurücksetzen geschickt. Bitte überprüfe dein Postfach.",
+  };
+}
+
+export async function updatePassword(
+  _prevState: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const result = UpdatePasswordSchema.safeParse({
+    password: formData.get("password"),
+    password_confirm: formData.get("password_confirm"),
+  });
+  if (!result.success) {
+    return { fieldErrors: result.error.flatten().fieldErrors };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      error:
+        "Der Link ist abgelaufen oder ungültig. Bitte fordere einen neuen Link an.",
+    };
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: result.data.password,
+  });
+
+  if (error) {
+    if (error.message.toLowerCase().includes("different from the old password")) {
+      return { error: "Das neue Passwort muss sich vom alten unterscheiden." };
+    }
+    return { error: "Passwort konnte nicht geändert werden. Bitte erneut versuchen." };
+  }
+
+  redirect("/deals");
 }
 
 export async function resendConfirmationEmail(

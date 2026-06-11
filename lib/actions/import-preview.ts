@@ -25,7 +25,27 @@ export async function previewImport(normalized: NormalizedImportRow[]): Promise<
     ...new Set(normalized.map((r) => r.externalOrderId).filter(Boolean)),
   ];
 
-  // ── Schritt 1: Alle Deals der Org laden (Exact-Match + Fuzzy-Pool) ─────────
+  // ── Schritt 1: Deals laden ─────────────────────────────────────────────────
+  // Exact-Match läuft über gezielte order_id-Queries (gechunkt) — der 500er-Pool
+  // ist nur für Fuzzy-Matching und darf den Exact-Match nicht begrenzen.
+  const DEAL_COLUMNS =
+    "id, order_id, customer_name, customer_email, total_price, payment_type, product_id, platform_id";
+
+  const orderIdChunks: string[][] = [];
+  for (let i = 0; i < orderIds.length; i += 200) {
+    orderIdChunks.push(orderIds.slice(i, i + 200));
+  }
+
+  const exactPromise = Promise.all(
+    orderIdChunks.map((chunk) =>
+      supabase
+        .from("deals")
+        .select(DEAL_COLUMNS)
+        .eq("organization_id", organizationId)
+        .in("order_id", chunk),
+    ),
+  );
+
   const [
     { data: platforms },
     { data: products },
@@ -35,11 +55,13 @@ export async function previewImport(normalized: NormalizedImportRow[]): Promise<
     supabase.from("products").select("id, name").eq("organization_id", organizationId),
     supabase
       .from("deals")
-      .select("id, order_id, customer_name, customer_email, total_price, payment_type, product_id, platform_id")
+      .select(DEAL_COLUMNS)
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .limit(500),
   ]);
+
+  const exactDealsRaw = (await exactPromise).flatMap((c) => c.data ?? []);
 
   const platformMap = new Map((platforms ?? []).map((p) => [p.id, p.name]));
   const productMap = new Map((products ?? []).map((p) => [p.id, p.name]));
@@ -72,10 +94,8 @@ export async function previewImport(normalized: NormalizedImportRow[]): Promise<
 
   const allDeals = (allDealsRaw ?? []).map(buildDealContext);
 
-  // Exact-Match Deals (nach orderId)
-  const matchingDeals = (allDealsRaw ?? []).filter(
-    (d) => d.order_id && orderIds.includes(d.order_id),
-  );
+  // Exact-Match Deals (nach orderId, aus den gezielten Queries)
+  const matchingDeals = exactDealsRaw.filter((d) => d.order_id);
 
   if (matchingDeals.length === 0) {
     return classifyRows(normalized, new Map(), allDeals);

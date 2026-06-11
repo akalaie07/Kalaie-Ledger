@@ -85,17 +85,25 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
       ? parseFloat(regFeeChoice)
       : 0;
 
-  // localStorage – letztes Datum + Closer merken
+  // localStorage – letztes Datum + Closer merken.
+  // Das Datum wird nur innerhalb von 12 Stunden wiederhergestellt — sonst
+  // bucht man neue Deals unbemerkt auf ein Wochen altes Abschlussdatum.
   useEffect(() => {
     const savedDate = localStorage.getItem("kalaie_last_close_date");
-    if (savedDate) setCloseDate(savedDate);
+    const savedAt = Number(localStorage.getItem("kalaie_last_close_date_at") ?? 0);
+    if (savedDate && savedAt && Date.now() - savedAt < 12 * 60 * 60 * 1000) {
+      setCloseDate(savedDate);
+    }
     const savedCloser = localStorage.getItem("kalaie_last_closer_id");
     if (savedCloser && closers.some((c) => c.id === savedCloser)) setCloserId(savedCloser);
   }, [closers]);
 
   function handleCloseDateChange(val: string) {
     setCloseDate(val);
-    if (val) localStorage.setItem("kalaie_last_close_date", val);
+    if (val) {
+      localStorage.setItem("kalaie_last_close_date", val);
+      localStorage.setItem("kalaie_last_close_date_at", String(Date.now()));
+    }
   }
 
   function handleCloserChange(val: string) {
@@ -251,10 +259,6 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
               <input type="hidden" name="reg_fee_paid" value="on" />
             )}
           </>
-        )}
-        {/* payment_method für Abo (wo kein sichtbares Feld existiert) */}
-        {paymentModel === "abo" && (
-          <input type="hidden" name="payment_method" value={paymentMethod} />
         )}
 
         {/* Abschlussdatum */}
@@ -644,6 +648,18 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                         type="date"
                         value={subscriptionStart}
                         onChange={(e) => setSubscriptionStart(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-muted-foreground">Zahlart</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        name="payment_method"
+                        placeholder="z.B. SEPA-Lastschrift, Kreditkarte"
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
                         className="h-8 text-sm"
                       />
                     </td>
