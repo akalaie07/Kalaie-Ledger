@@ -1,31 +1,50 @@
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 
-// Handles Supabase email-confirmation and OAuth redirects.
-// Supabase sends the user here with a ?code= query parameter after they
-// click the confirmation link.
+const OTP_TYPES = new Set<EmailOtpType>([
+  "signup",
+  "invite",
+  "magiclink",
+  "recovery",
+  "email_change",
+  "email",
+]);
+
+function safeNextPath(next: string | null): string {
+  return next?.startsWith("/") && !next.startsWith("//") && next !== "/"
+    ? next
+    : "/deals";
+}
+
+// Handles Supabase email-confirmation, recovery, and OAuth redirects.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const tokenHash = searchParams.get("token_hash");
+  const type = searchParams.get("type");
+  const safeNext = safeNextPath(searchParams.get("next"));
+
+  const supabase = await createClient();
 
   if (code) {
-    const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      // Validate the redirect target to prevent open redirects.
-      // Default "/" would hit app/page.tsx which just re-redirects to /deals
-      // anyway — go straight there to avoid the extra round-trip.
-      const safeNext =
-        next.startsWith("/") && !next.startsWith("//") && next !== "/"
-          ? next
-          : "/deals";
       return NextResponse.redirect(`${origin}${safeNext}`);
     }
   }
 
-  return NextResponse.redirect(
-    `${origin}/login?error=auth_callback_failed`,
-  );
+  if (tokenHash && type && OTP_TYPES.has(type as EmailOtpType)) {
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: type as EmailOtpType,
+    });
+
+    if (!error) {
+      return NextResponse.redirect(`${origin}${safeNext}`);
+    }
+  }
+
+  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
 }

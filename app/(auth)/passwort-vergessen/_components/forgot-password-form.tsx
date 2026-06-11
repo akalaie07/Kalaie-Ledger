@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import HCaptcha from "@hcaptcha/react-hcaptcha";
 
@@ -16,6 +16,13 @@ export function ForgotPasswordForm() {
   );
   const [captchaToken, setCaptchaToken] = useState("");
   const captchaRef = useRef<HCaptcha>(null);
+
+  useEffect(() => {
+    if (!state?.error) return;
+    captchaRef.current?.resetCaptcha();
+    const timeout = window.setTimeout(() => setCaptchaToken(""), 0);
+    return () => window.clearTimeout(timeout);
+  }, [state?.error]);
 
   if (state?.message) {
     return (
@@ -33,7 +40,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form action={action} className="space-y-4" onSubmit={() => captchaRef.current?.resetCaptcha()}>
+    <form action={action} className="space-y-4">
       <input type="hidden" name="h-captcha-response" value={captchaToken} />
 
       {state?.error && (

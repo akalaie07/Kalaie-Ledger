@@ -60,6 +60,20 @@ function safeRedirectPath(next: string | null | undefined): string {
   return next;
 }
 
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function appOriginFromHeaders(hdrs: Headers): string {
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configuredUrl) return stripTrailingSlash(configuredUrl);
+
+  const origin =
+    hdrs.get("origin") ??
+    `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host")}`;
+  return stripTrailingSlash(origin);
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -234,9 +248,7 @@ export async function requestPasswordReset(
 
   const captchaToken = formData.get("h-captcha-response") as string | null;
   const hdrs = await headers();
-  const origin =
-    hdrs.get("origin") ??
-    `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host")}`;
+  const origin = appOriginFromHeaders(hdrs);
 
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(result.data.email, {
