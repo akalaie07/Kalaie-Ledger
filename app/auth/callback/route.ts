@@ -1,7 +1,6 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { NextRequest, NextResponse } from "next/server";
-
-import { createClient } from "@/lib/supabase/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
 const OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -19,6 +18,9 @@ function safeNextPath(next: string | null): string {
 }
 
 // Handles Supabase email-confirmation, recovery, and OAuth redirects.
+// Session-Cookies werden direkt auf die Redirect-Response gesetzt — sonst
+// gehen sie verloren (next/headers cookies() propagieren nicht auf eine
+// neu erzeugte NextResponse.redirect()).
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -26,13 +28,33 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type");
   const safeNext = safeNextPath(searchParams.get("next"));
 
-  const supabase = await createClient();
+  const successResponse = NextResponse.redirect(`${origin}${safeNext}`);
+  const errorResponse = NextResponse.redirect(
+    `${origin}/login?error=auth_callback_failed`,
+  );
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          for (const { name, value, options } of cookiesToSet) {
+            request.cookies.set(name, value);
+            successResponse.cookies.set(name, value, options);
+            errorResponse.cookies.set(name, value, options);
+          }
+        },
+      },
+    },
+  );
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(`${origin}${safeNext}`);
-    }
+    if (!error) return successResponse;
   }
 
   if (tokenHash && type && OTP_TYPES.has(type as EmailOtpType)) {
@@ -40,11 +62,8 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash,
       type: type as EmailOtpType,
     });
-
-    if (!error) {
-      return NextResponse.redirect(`${origin}${safeNext}`);
-    }
+    if (!error) return successResponse;
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
+  return errorResponse;
 }
