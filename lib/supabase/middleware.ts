@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import "@/lib/supabase/validate-env";
 import type { Database } from "@/lib/types/database";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/invite", "/passwort-vergessen"];
+const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/invite", "/passwort-vergessen", "/passwort-aendern"];
 
 // Authenticated users are redirected away from these paths (but not /invite,
 // since a logged-in user may still need to accept an invite from a different
