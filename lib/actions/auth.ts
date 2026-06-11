@@ -252,7 +252,7 @@ export async function requestPasswordReset(
 
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(result.data.email, {
-    redirectTo: `${origin}/auth/callback?next=/passwort-aendern`,
+    redirectTo: `${origin}/auth/callback/recovery`,
     captchaToken: captchaToken ?? undefined,
   });
 
