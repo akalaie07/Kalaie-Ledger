@@ -43,6 +43,9 @@ interface DealEditFormProps {
     inst_count: number | null;
     first_due_date: string | null;
     reg_fee_paid: boolean;
+    is_upsell: boolean;
+    upsell_order_id: string | null;
+    coaching_until: string | null;
   };
 }
 
@@ -133,6 +136,11 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   const [closerId, setCloserId] = useState(initial.closer_id ?? "");
   const [paymentMethod, setPaymentMethod] = useState(initial.payment_method ?? "");
 
+  // ── Upsell + Begleitung ──
+  const [isUpsell, setIsUpsell] = useState(initial.is_upsell);
+  const [upsellOrderId, setUpsellOrderId] = useState(initial.upsell_order_id ?? "");
+  const [coachingUntil, setCoachingUntil] = useState(initial.coaching_until ?? "");
+
   // ── localStorage: load per-dealId draft on mount ──
   useEffect(() => {
     const ls = (key: string) => localStorage.getItem(`kalaie_edit_${dealId}_${key}`);
@@ -187,6 +195,15 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
 
     const savedRegFeeCustom = ls("regFeeCustom");
     if (savedRegFeeCustom) setRegFeeCustom(parseFloat(savedRegFeeCustom));
+
+    const savedIsUpsell = ls("isUpsell");
+    if (savedIsUpsell !== null) setIsUpsell(savedIsUpsell === "true");
+
+    const savedUpsellOrderId = ls("upsellOrderId");
+    if (savedUpsellOrderId !== null) setUpsellOrderId(savedUpsellOrderId);
+
+    const savedCoachingUntil = ls("coachingUntil");
+    if (savedCoachingUntil !== null) setCoachingUntil(savedCoachingUntil);
   }, [dealId, closers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function lsSave(key: string, value: string) {
@@ -198,7 +215,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
       "closeDate", "closerId", "paymentModel", "einmaligBetrag", "einmaligFaellig",
       "gesamtbetrag", "numberOfRates", "firstDueDate", "hasAnzahlung", "downPayment",
       "downPaymentDate", "recurringAmount", "subscriptionStart", "paymentMethod",
-      "regFeeChoice", "regFeeCustom",
+      "regFeeChoice", "regFeeCustom", "isUpsell", "upsellOrderId", "coachingUntil",
     ];
     for (const key of keys) localStorage.removeItem(`kalaie_edit_${dealId}_${key}`);
   }
@@ -346,6 +363,58 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+          </div>
+        </div>
+
+        {/* Upsell + Begleitung */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Upsell</Label>
+            <label className="flex h-9 items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                name="is_upsell"
+                value="on"
+                checked={isUpsell}
+                onChange={(e) => {
+                  setIsUpsell(e.target.checked);
+                  lsSave("isUpsell", String(e.target.checked));
+                }}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              Dieser Deal hat einen Upsell
+            </label>
+            {isUpsell && (
+              <div className="space-y-1.5 pt-1">
+                <Label htmlFor="upsell_order_id">Neue Bestell-ID</Label>
+                <Input
+                  id="upsell_order_id"
+                  name="upsell_order_id"
+                  placeholder="Bestell-ID des Upsells"
+                  value={upsellOrderId}
+                  onChange={(e) => {
+                    setUpsellOrderId(e.target.value);
+                    lsSave("upsellOrderId", e.target.value);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="coaching_until">Begleitung läuft bis</Label>
+            <Input
+              id="coaching_until"
+              name="coaching_until"
+              type="date"
+              value={coachingUntil}
+              onChange={(e) => {
+                setCoachingUntil(e.target.value);
+                lsSave("coachingUntil", e.target.value);
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Läuft die Begleitung in ≤ 14 Tagen aus, erscheint der Deal unter „Begleitung".
+            </p>
           </div>
         </div>
       </section>

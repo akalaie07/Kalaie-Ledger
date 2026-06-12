@@ -71,6 +71,10 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
   const [closerId, setCloserId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
 
+  // Upsell + Begleitung
+  const [isUpsell, setIsUpsell] = useState(false);
+  const [coachingUntil, setCoachingUntil] = useState("");
+
   const isSubscription =
     selectedProductType === "subscription_monthly" ||
     selectedProductType === "subscription_yearly";
@@ -230,6 +234,47 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+          </div>
+        </div>
+
+        {/* Upsell + Begleitung */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Upsell</Label>
+            <label className="flex h-9 items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                name="is_upsell"
+                value="on"
+                checked={isUpsell}
+                onChange={(e) => setIsUpsell(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              Dieser Deal hat einen Upsell
+            </label>
+            {isUpsell && (
+              <div className="space-y-1.5 pt-1">
+                <Label htmlFor="upsell_order_id">Neue Bestell-ID</Label>
+                <Input
+                  id="upsell_order_id"
+                  name="upsell_order_id"
+                  placeholder="Bestell-ID des Upsells"
+                />
+              </div>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="coaching_until">Begleitung läuft bis</Label>
+            <Input
+              id="coaching_until"
+              name="coaching_until"
+              type="date"
+              value={coachingUntil}
+              onChange={(e) => setCoachingUntil(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Läuft die Begleitung in ≤ 14 Tagen aus, erscheint der Deal unter „Begleitung".
+            </p>
           </div>
         </div>
       </section>

@@ -44,6 +44,7 @@ interface SidebarProps {
   currentUserId: string;
   organizationId: string;
   initialMembers: Member[];
+  coachingCount: number;
 }
 
 // ─── Nav-Typen ────────────────────────────────────────────────────────────────
@@ -85,6 +86,7 @@ const sidebarEntries: SidebarEntry[] = [
     items: [
       { href: "/deals", label: "Deals", icon: FileText, roles: ["admin", "closer", "sales_partner"] },
       { href: "/deals/new", label: "Neuer Deal", icon: PlusCircle, roles: ["admin", "closer", "sales_partner"] },
+      { href: "/deals/begleitung", label: "Begleitung", icon: Clock, roles: ["admin", "closer", "sales_partner"] },
     ],
   },
 
@@ -138,11 +140,13 @@ function NavLink({
   label,
   icon: Icon,
   active,
+  badge,
 }: {
   href: string;
   label: string;
   icon: React.ElementType;
   active: boolean;
+  badge?: number;
 }) {
   return (
     <Link
@@ -155,7 +159,12 @@ function NavLink({
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      {label}
+      <span className="flex-1 truncate">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500/20 px-1.5 text-xs font-semibold text-amber-400">
+          {badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -187,6 +196,7 @@ export function Sidebar({
   currentUserId,
   organizationId,
   initialMembers,
+  coachingCount,
 }: SidebarProps) {
   const pathname = usePathname();
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -255,6 +265,7 @@ export function Sidebar({
                 label={item.label}
                 icon={item.icon}
                 active={isActive(item.href)}
+                badge={item.href === "/deals/begleitung" ? coachingCount : undefined}
               />
             ))}
           </div>

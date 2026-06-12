@@ -112,6 +112,9 @@ export default async function DealEditPage({
           inst_amount: installments?.[0]?.amount ?? null,
           inst_count: installments?.length ?? null,
           first_due_date: installments?.[0]?.due_date ?? null,
+          is_upsell: (deal as { is_upsell?: boolean }).is_upsell ?? false,
+          upsell_order_id: (deal as { upsell_order_id?: string | null }).upsell_order_id ?? null,
+          coaching_until: (deal as { coaching_until?: string | null }).coaching_until ?? null,
         }}
       />
 

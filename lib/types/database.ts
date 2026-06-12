@@ -370,6 +370,10 @@ export type Database = {
           down_payment: number | null;
           recurring_amount: number | null;
           subscription_start_date: string | null;
+          is_upsell: boolean;
+          upsell_order_id: string | null;
+          coaching_until: string | null;
+          coaching_done: boolean;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -398,6 +402,10 @@ export type Database = {
           down_payment?: number | null;
           recurring_amount?: number | null;
           subscription_start_date?: string | null;
+          is_upsell?: boolean;
+          upsell_order_id?: string | null;
+          coaching_until?: string | null;
+          coaching_done?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -426,6 +434,10 @@ export type Database = {
           down_payment?: number | null;
           recurring_amount?: number | null;
           subscription_start_date?: string | null;
+          is_upsell?: boolean;
+          upsell_order_id?: string | null;
+          coaching_until?: string | null;
+          coaching_done?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;

@@ -103,6 +103,18 @@ const DealSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "on"),
+  // Upsell — nur Markierung + Referenz-Bestell-ID am selben Deal
+  is_upsell: z
+    .string()
+    .optional()
+    .transform((v) => v === "on"),
+  upsell_order_id: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => v || null),
+  // Begleitung läuft bis am
+  coaching_until: optDate,
 });
 
 // ---------------------------------------------------------------------------
@@ -199,6 +211,7 @@ export async function createDeal(
       down_payment,
       recurring_amount: isSubscription ? recurring_amount : null,
       subscription_start_date: isSubscription ? subscription_start_date : null,
+      upsell_order_id: dealFields.is_upsell ? dealFields.upsell_order_id : null,
       organization_id: session.organizationId,
       created_by: session.userId,
     })
@@ -303,6 +316,7 @@ export async function updateDeal(
       down_payment,
       recurring_amount: isSubscription ? recurring_amount : null,
       subscription_start_date: isSubscription ? subscription_start_date : null,
+      upsell_order_id: dealFields.is_upsell ? dealFields.upsell_order_id : null,
     })
     .eq("id", id)
     .eq("organization_id", session.organizationId);
@@ -570,6 +584,30 @@ export async function setDealEscalation(
   revalidatePath("/deals");
   revalidatePath("/forderungsmanagement/mahnung");
   revalidatePath("/forderungsmanagement/inkasso");
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// markCoachingDone — Begleitung als bearbeitet markieren (raus aus dem Ordner)
+// ---------------------------------------------------------------------------
+
+export async function markCoachingDone(
+  dealId: string,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("deals")
+    .update({ coaching_done: true })
+    .eq("id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  if (error) return { error: "Konnte nicht als erledigt markiert werden." };
+
+  revalidatePath("/deals/begleitung");
+  revalidatePath(`/deals/${dealId}`);
   return {};
 }
 
