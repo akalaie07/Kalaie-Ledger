@@ -372,6 +372,9 @@ export type Database = {
           subscription_start_date: string | null;
           is_upsell: boolean;
           upsell_order_id: string | null;
+          upsell_product_id: string | null;
+          upsell_amount: number | null;
+          upsell_paid: boolean;
           coaching_until: string | null;
           coaching_done: boolean;
           created_by: string | null;
@@ -404,6 +407,9 @@ export type Database = {
           subscription_start_date?: string | null;
           is_upsell?: boolean;
           upsell_order_id?: string | null;
+          upsell_product_id?: string | null;
+          upsell_amount?: number | null;
+          upsell_paid?: boolean;
           coaching_until?: string | null;
           coaching_done?: boolean;
           created_by?: string | null;
@@ -436,6 +442,9 @@ export type Database = {
           subscription_start_date?: string | null;
           is_upsell?: boolean;
           upsell_order_id?: string | null;
+          upsell_product_id?: string | null;
+          upsell_amount?: number | null;
+          upsell_paid?: boolean;
           coaching_until?: string | null;
           coaching_done?: boolean;
           created_by?: string | null;

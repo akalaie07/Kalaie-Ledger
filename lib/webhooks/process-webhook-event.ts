@@ -116,7 +116,7 @@ export async function processWebhookEvent(
     .from("import_batches")
     .insert({
       organization_id: organizationId,
-      source: "ablefy",
+      source: normalized.source,
       filename: "webhook",
       row_count: 1,
       status: "pending",

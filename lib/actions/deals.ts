@@ -113,6 +113,15 @@ const DealSchema = z.object({
     .trim()
     .optional()
     .transform((v) => v || null),
+  upsell_product_id: uuidOpt,
+  upsell_amount: z.preprocess(
+    (v) => (v === "" || v == null ? null : Number(v)),
+    z.number().nonnegative("Muss ≥ 0 sein.").nullable(),
+  ),
+  upsell_paid: z
+    .string()
+    .optional()
+    .transform((v) => v === "on"),
   // Begleitung läuft bis am
   coaching_until: optDate,
 });
@@ -212,6 +221,9 @@ export async function createDeal(
       recurring_amount: isSubscription ? recurring_amount : null,
       subscription_start_date: isSubscription ? subscription_start_date : null,
       upsell_order_id: dealFields.is_upsell ? dealFields.upsell_order_id : null,
+      upsell_product_id: dealFields.is_upsell ? dealFields.upsell_product_id : null,
+      upsell_amount: dealFields.is_upsell ? dealFields.upsell_amount : null,
+      upsell_paid: dealFields.is_upsell ? dealFields.upsell_paid : false,
       organization_id: session.organizationId,
       created_by: session.userId,
     })
@@ -317,6 +329,9 @@ export async function updateDeal(
       recurring_amount: isSubscription ? recurring_amount : null,
       subscription_start_date: isSubscription ? subscription_start_date : null,
       upsell_order_id: dealFields.is_upsell ? dealFields.upsell_order_id : null,
+      upsell_product_id: dealFields.is_upsell ? dealFields.upsell_product_id : null,
+      upsell_amount: dealFields.is_upsell ? dealFields.upsell_amount : null,
+      upsell_paid: dealFields.is_upsell ? dealFields.upsell_paid : false,
     })
     .eq("id", id)
     .eq("organization_id", session.organizationId);

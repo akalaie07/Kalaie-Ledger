@@ -114,6 +114,9 @@ export default async function DealEditPage({
           first_due_date: installments?.[0]?.due_date ?? null,
           is_upsell: (deal as { is_upsell?: boolean }).is_upsell ?? false,
           upsell_order_id: (deal as { upsell_order_id?: string | null }).upsell_order_id ?? null,
+          upsell_product_id: (deal as { upsell_product_id?: string | null }).upsell_product_id ?? null,
+          upsell_amount: (deal as { upsell_amount?: number | null }).upsell_amount ?? null,
+          upsell_paid: (deal as { upsell_paid?: boolean }).upsell_paid ?? false,
           coaching_until: (deal as { coaching_until?: string | null }).coaching_until ?? null,
         }}
       />

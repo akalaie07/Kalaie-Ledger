@@ -45,6 +45,9 @@ interface DealEditFormProps {
     reg_fee_paid: boolean;
     is_upsell: boolean;
     upsell_order_id: string | null;
+    upsell_product_id: string | null;
+    upsell_amount: number | null;
+    upsell_paid: boolean;
     coaching_until: string | null;
   };
 }
@@ -139,6 +142,9 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   // ── Upsell + Begleitung ──
   const [isUpsell, setIsUpsell] = useState(initial.is_upsell);
   const [upsellOrderId, setUpsellOrderId] = useState(initial.upsell_order_id ?? "");
+  const [upsellProductId, setUpsellProductId] = useState(initial.upsell_product_id ?? "");
+  const [upsellAmount, setUpsellAmount] = useState(initial.upsell_amount ?? 0);
+  const [upsellPaid, setUpsellPaid] = useState(initial.upsell_paid);
   const [coachingUntil, setCoachingUntil] = useState(initial.coaching_until ?? "");
 
   // ── localStorage: load per-dealId draft on mount ──
@@ -202,6 +208,15 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
     const savedUpsellOrderId = ls("upsellOrderId");
     if (savedUpsellOrderId !== null) setUpsellOrderId(savedUpsellOrderId);
 
+    const savedUpsellProductId = ls("upsellProductId");
+    if (savedUpsellProductId !== null) setUpsellProductId(savedUpsellProductId);
+
+    const savedUpsellAmount = ls("upsellAmount");
+    if (savedUpsellAmount) setUpsellAmount(parseFloat(savedUpsellAmount));
+
+    const savedUpsellPaid = ls("upsellPaid");
+    if (savedUpsellPaid !== null) setUpsellPaid(savedUpsellPaid === "true");
+
     const savedCoachingUntil = ls("coachingUntil");
     if (savedCoachingUntil !== null) setCoachingUntil(savedCoachingUntil);
   }, [dealId, closers]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -216,6 +231,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
       "gesamtbetrag", "numberOfRates", "firstDueDate", "hasAnzahlung", "downPayment",
       "downPaymentDate", "recurringAmount", "subscriptionStart", "paymentMethod",
       "regFeeChoice", "regFeeCustom", "isUpsell", "upsellOrderId", "coachingUntil",
+      "upsellProductId", "upsellAmount", "upsellPaid",
     ];
     for (const key of keys) localStorage.removeItem(`kalaie_edit_${dealId}_${key}`);
   }
@@ -385,18 +401,76 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
               Dieser Deal hat einen Upsell
             </label>
             {isUpsell && (
-              <div className="space-y-1.5 pt-1">
-                <Label htmlFor="upsell_order_id">Neue Bestell-ID</Label>
-                <Input
-                  id="upsell_order_id"
-                  name="upsell_order_id"
-                  placeholder="Bestell-ID des Upsells"
-                  value={upsellOrderId}
-                  onChange={(e) => {
-                    setUpsellOrderId(e.target.value);
-                    lsSave("upsellOrderId", e.target.value);
-                  }}
-                />
+              <div className="space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="upsell_product_id">Bisheriges Produkt</Label>
+                  <select
+                    id="upsell_product_id"
+                    name="upsell_product_id"
+                    value={upsellProductId}
+                    onChange={(e) => {
+                      setUpsellProductId(e.target.value);
+                      lsSave("upsellProductId", e.target.value);
+                    }}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">— keine —</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="upsell_amount">Bisher bezahlt (€)</Label>
+                  <Input
+                    id="upsell_amount"
+                    name="upsell_amount"
+                    type="number" min="0" step="0.01" placeholder="0,00"
+                    value={upsellAmount || ""}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value) || 0;
+                      setUpsellAmount(v);
+                      lsSave("upsellAmount", String(v));
+                    }}
+                  />
+                  {upsellAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !upsellPaid;
+                        setUpsellPaid(next);
+                        lsSave("upsellPaid", String(next));
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all cursor-pointer hover:ring-2 hover:ring-offset-1",
+                        upsellPaid
+                          ? "bg-emerald-500/15 text-emerald-400 hover:ring-emerald-500/40"
+                          : "bg-muted text-muted-foreground hover:ring-border",
+                      )}
+                    >
+                      {upsellPaid ? "✓ Bereits bezahlt" : "Noch offen"}
+                    </button>
+                  )}
+                  {upsellPaid && <input type="hidden" name="upsell_paid" value="on" />}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="upsell_order_id">Neue Bestell-ID</Label>
+                  <Input
+                    id="upsell_order_id"
+                    name="upsell_order_id"
+                    placeholder="Bestell-ID des Upsells"
+                    value={upsellOrderId}
+                    onChange={(e) => {
+                      setUpsellOrderId(e.target.value);
+                      lsSave("upsellOrderId", e.target.value);
+                    }}
+                  />
+                </div>
+                {upsellAmount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Upsell {fmt(upsellAmount)} {upsellPaid ? "(bezahlt)" : "(offen)"} wird zum Gesamtumsatz addiert.
+                  </p>
+                )}
               </div>
             )}
           </div>

@@ -152,6 +152,25 @@ export default async function DealDetailPage({
             </span>
           }
         />
+        {d.is_upsell && d.upsell_amount != null && (
+          <Row
+            label="Upsell"
+            value={
+              <span className="tabular-nums">
+                {new Intl.NumberFormat("de-DE", {
+                  style: "currency",
+                  currency: "EUR",
+                }).format(d.upsell_amount)}{" "}
+                <span className={d.upsell_paid ? "text-emerald-400" : "text-amber-400"}>
+                  ({d.upsell_paid ? "bezahlt" : "offen"})
+                </span>
+                {d.upsell_order_id && (
+                  <span className="text-muted-foreground"> · #{d.upsell_order_id}</span>
+                )}
+              </span>
+            }
+          />
+        )}
         {d.down_payment != null && (
           <Row
             label="Anzahlung"

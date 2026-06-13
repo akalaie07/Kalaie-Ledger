@@ -73,6 +73,9 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
 
   // Upsell + Begleitung
   const [isUpsell, setIsUpsell] = useState(false);
+  const [upsellProductId, setUpsellProductId] = useState("");
+  const [upsellAmount, setUpsellAmount] = useState(0);
+  const [upsellPaid, setUpsellPaid] = useState(false);
   const [coachingUntil, setCoachingUntil] = useState("");
 
   const isSubscription =
@@ -253,13 +256,60 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
               Dieser Deal hat einen Upsell
             </label>
             {isUpsell && (
-              <div className="space-y-1.5 pt-1">
-                <Label htmlFor="upsell_order_id">Neue Bestell-ID</Label>
-                <Input
-                  id="upsell_order_id"
-                  name="upsell_order_id"
-                  placeholder="Bestell-ID des Upsells"
-                />
+              <div className="space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="upsell_product_id">Bisheriges Produkt</Label>
+                  <select
+                    id="upsell_product_id"
+                    name="upsell_product_id"
+                    value={upsellProductId}
+                    onChange={(e) => setUpsellProductId(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">— keine —</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="upsell_amount">Bisher bezahlt (€)</Label>
+                  <Input
+                    id="upsell_amount"
+                    name="upsell_amount"
+                    type="number" min="0" step="0.01" placeholder="0,00"
+                    value={upsellAmount || ""}
+                    onChange={(e) => setUpsellAmount(parseFloat(e.target.value) || 0)}
+                  />
+                  {upsellAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setUpsellPaid((v) => !v)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all cursor-pointer hover:ring-2 hover:ring-offset-1",
+                        upsellPaid
+                          ? "bg-emerald-500/15 text-emerald-400 hover:ring-emerald-500/40"
+                          : "bg-muted text-muted-foreground hover:ring-border",
+                      )}
+                    >
+                      {upsellPaid ? "✓ Bereits bezahlt" : "Noch offen"}
+                    </button>
+                  )}
+                  {upsellPaid && <input type="hidden" name="upsell_paid" value="on" />}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="upsell_order_id">Neue Bestell-ID</Label>
+                  <Input
+                    id="upsell_order_id"
+                    name="upsell_order_id"
+                    placeholder="Bestell-ID des Upsells"
+                  />
+                </div>
+                {upsellAmount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Upsell {fmt(upsellAmount)} {upsellPaid ? "(bezahlt)" : "(offen)"} wird zum Gesamtumsatz addiert.
+                  </p>
+                )}
               </div>
             )}
           </div>
