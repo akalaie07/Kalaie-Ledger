@@ -11,7 +11,11 @@
 --   upsell_paid       : true = bereits bezahlt → Ist-Umsatz, false = offen
 -- =============================================================================
 
-alter table deals add column if not exists upsell_product_id uuid references products(id) on delete set null;
+-- upsell_product_id bewusst OHNE Fremdschlüssel auf products: ein zweiter FK
+-- deals→products macht das PostgREST-Embedding products(name) mehrdeutig und
+-- bricht alle Deal-Abfragen. Wir speichern nur die ID (Referenz reicht).
+alter table deals add column if not exists upsell_product_id uuid;
+alter table deals drop constraint if exists deals_upsell_product_id_fkey;
 alter table deals add column if not exists upsell_amount numeric(12,2);
 alter table deals add column if not exists upsell_paid boolean not null default false;
 

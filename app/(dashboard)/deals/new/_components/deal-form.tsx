@@ -298,11 +298,11 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                   {upsellPaid && <input type="hidden" name="upsell_paid" value="on" />}
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="upsell_order_id">Neue Bestell-ID</Label>
+                  <Label htmlFor="upsell_order_id">Alte Bestell-ID</Label>
                   <Input
                     id="upsell_order_id"
                     name="upsell_order_id"
-                    placeholder="Bestell-ID des Upsells"
+                    placeholder="Bestell-ID des bisherigen Kaufs"
                   />
                 </div>
                 {upsellAmount > 0 && (
