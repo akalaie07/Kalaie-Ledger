@@ -43,6 +43,12 @@ const DealSchema = z.object({
     .optional()
     .transform((v) => v || null),
   closer_id: uuidOpt,
+  sales_partner_id: uuidOpt,
+  closer_manual: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => v || null),
   total_price: z.coerce
     .number()
     .min(0, "Muss ≥ 0 sein."),
@@ -224,6 +230,7 @@ export async function createDeal(
       upsell_product_id: dealFields.is_upsell ? dealFields.upsell_product_id : null,
       upsell_amount: dealFields.is_upsell ? dealFields.upsell_amount : null,
       upsell_paid: dealFields.is_upsell ? dealFields.upsell_paid : false,
+      coaching_until: isSubscription ? null : dealFields.coaching_until,
       organization_id: session.organizationId,
       created_by: session.userId,
     })
@@ -332,6 +339,7 @@ export async function updateDeal(
       upsell_product_id: dealFields.is_upsell ? dealFields.upsell_product_id : null,
       upsell_amount: dealFields.is_upsell ? dealFields.upsell_amount : null,
       upsell_paid: dealFields.is_upsell ? dealFields.upsell_paid : false,
+      coaching_until: isSubscription ? null : dealFields.coaching_until,
     })
     .eq("id", id)
     .eq("organization_id", session.organizationId);
@@ -817,6 +825,31 @@ export async function toggleSubscriptionPayment(
     .eq("organization_id", session.organizationId);
 
   if (error) return { error: "Status konnte nicht aktualisiert werden." };
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// deleteSubscriptionPayment — unbezahlte Abo-Zahlung löschen (z.B. nach Storno)
+// ---------------------------------------------------------------------------
+
+export async function deleteSubscriptionPayment(
+  paymentId: string,
+  dealId: string,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("subscription_payments")
+    .delete()
+    .eq("id", paymentId)
+    .eq("deal_id", dealId)
+    .eq("organization_id", session.organizationId)
+    .eq("paid", false);
+
+  if (error) return { error: "Zahlung konnte nicht gelöscht werden." };
   revalidatePath(`/deals/${dealId}`);
   return {};
 }

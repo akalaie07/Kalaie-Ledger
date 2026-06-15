@@ -22,10 +22,16 @@ export interface ProductOption {
   default_price: number | null;
 }
 
+export interface PartnerOption {
+  id: string;
+  name: string;
+}
+
 interface DealFormProps {
   platforms: Option[];
   products: ProductOption[];
   closers: Option[];
+  salesPartners: PartnerOption[];
 }
 
 function FieldError({ msg }: { msg?: string }) {
@@ -38,7 +44,7 @@ const fmt = (v: number) =>
 
 type PaymentModel = "einmalig" | "ratenzahlung" | "abo";
 
-export function DealForm({ platforms, products, closers }: DealFormProps) {
+export function DealForm({ platforms, products, closers, salesPartners }: DealFormProps) {
   const [state, action, pending] = useActionState<DealFormState, FormData>(createDeal, null);
 
   const [paymentModel, setPaymentModel] = useState<PaymentModel>("einmalig");
@@ -53,6 +59,8 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
   const [gesamtbetrag, setGesamtbetrag] = useState(0);
   const [numberOfRates, setNumberOfRates] = useState(0);
   const [firstDueDate, setFirstDueDate] = useState("");
+  const [instMode, setInstMode] = useState<"total" | "rate">("total");
+  const [rateAmount, setRateAmount] = useState(0);
 
   // Anzahlung (shared für EZ und Ratenzahlung)
   const [hasAnzahlung, setHasAnzahlung] = useState(false);
@@ -69,6 +77,9 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
   // Shared
   const [closeDate, setCloseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [closerId, setCloserId] = useState("");
+  const [closerMode, setCloserMode] = useState<"closer" | "partner" | "manual">("closer");
+  const [closerManual, setCloserManual] = useState("");
+  const [salesPartnerId, setSalesPartnerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
 
   // Upsell + Begleitung
@@ -77,6 +88,7 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
   const [upsellAmount, setUpsellAmount] = useState(0);
   const [upsellPaid, setUpsellPaid] = useState(false);
   const [coachingUntil, setCoachingUntil] = useState("");
+  const [isBefristet, setIsBefristet] = useState(false);
 
   const isSubscription =
     selectedProductType === "subscription_monthly" ||
@@ -148,12 +160,13 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
     return "one_time";
   })();
 
+  // Ratenzahlung: im Rate-Modus wird Gesamtbetrag aus Rate × Anzahl berechnet
+  const computedInstTotal =
+    instMode === "rate" && numberOfRates >= 1 ? rateAmount * numberOfRates : gesamtbetrag;
+
   const computedTotalPrice = (() => {
     if (paymentModel === "abo" && isSubscription) return effectiveRegFee;
-    // Ratenzahlung: Gesamtbetrag wie angegeben
-    if (paymentModel === "ratenzahlung")
-      return gesamtbetrag;
-    // Einmalzahlung: total_price = einmaligBetrag (Anzahlung ist Teil des Betrags)
+    if (paymentModel === "ratenzahlung") return computedInstTotal;
     return einmaligBetrag;
   })();
 
@@ -313,19 +326,53 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
               </div>
             )}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="coaching_until">Begleitung läuft bis</Label>
-            <Input
-              id="coaching_until"
-              name="coaching_until"
-              type="date"
-              value={coachingUntil}
-              onChange={(e) => setCoachingUntil(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Läuft die Begleitung in ≤ 14 Tagen aus, erscheint der Deal unter „Begleitung".
-            </p>
-          </div>
+          {!isSubscription && (
+            <div className="space-y-1.5">
+              <Label>Begleitung befristet?</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsBefristet(false); setCoachingUntil(""); }}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                    !isBefristet
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground",
+                  )}
+                >
+                  Nein
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBefristet(true)}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                    isBefristet
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground",
+                  )}
+                >
+                  Ja
+                </button>
+              </div>
+              {isBefristet && (
+                <>
+                  <Input
+                    id="coaching_until"
+                    name="coaching_until"
+                    type="date"
+                    value={coachingUntil}
+                    onChange={(e) => setCoachingUntil(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Läuft die Begleitung in ≤ 14 Tagen aus, erscheint der Deal unter „Begleitung".
+                  </p>
+                </>
+              )}
+              {!isBefristet && <input type="hidden" name="coaching_until" value="" />}
+            </div>
+          )}
+          {isSubscription && <input type="hidden" name="coaching_until" value="" />}
         </div>
       </section>
 
@@ -517,7 +564,35 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
         {/* ── Ratenzahlung ── */}
         {paymentModel === "ratenzahlung" && (
           <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-4">
-            <h3 className="text-sm font-semibold">Ratenzahlung</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Ratenzahlung</h3>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setInstMode("total")}
+                  className={cn(
+                    "rounded px-2.5 py-1 text-xs font-medium transition-colors border",
+                    instMode === "total"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Gesamtpreis
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInstMode("rate")}
+                  className={cn(
+                    "rounded px-2.5 py-1 text-xs font-medium transition-colors border",
+                    instMode === "rate"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Rate eingeben
+                </button>
+              </div>
+            </div>
             <div className="rounded-md border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b border-border">
@@ -527,21 +602,37 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  <tr>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      Gesamtbetrag <span className="text-destructive">*</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        type="number" min="0" step="0.01" placeholder="0,00"
-                        value={gesamtbetrag || ""}
-                        onChange={(e) => setGesamtbetrag(parseFloat(e.target.value) || 0)}
-                        className="h-8 text-sm"
-                        aria-invalid={!!fe.total_price}
-                      />
-                      <FieldError msg={fe.total_price?.[0]} />
-                    </td>
-                  </tr>
+                  {instMode === "total" ? (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        Gesamtbetrag <span className="text-destructive">*</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Input
+                          type="number" min="0" step="0.01" placeholder="0,00"
+                          value={gesamtbetrag || ""}
+                          onChange={(e) => setGesamtbetrag(parseFloat(e.target.value) || 0)}
+                          className="h-8 text-sm"
+                          aria-invalid={!!fe.total_price}
+                        />
+                        <FieldError msg={fe.total_price?.[0]} />
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        Betrag pro Rate <span className="text-destructive">*</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Input
+                          type="number" min="0" step="0.01" placeholder="0,00"
+                          value={rateAmount || ""}
+                          onChange={(e) => setRateAmount(parseFloat(e.target.value) || 0)}
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                    </tr>
+                  )}
                   <tr>
                     <td className="px-4 py-3 text-muted-foreground">
                       Anzahl Raten <span className="text-destructive">*</span>
@@ -574,20 +665,33 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
                       <FieldError msg={fe.first_due_date?.[0]} />
                     </td>
                   </tr>
-                  <tr>
-                    <td className="px-4 py-3 text-muted-foreground">Betrag pro Rate</td>
-                    <td className="px-4 py-3">
-                      {gesamtbetrag > 0 && numberOfRates >= 1 ? (
-                        <span className="font-semibold tabular-nums">
-                          {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/50 text-xs">
-                          Wird berechnet…
-                        </span>
-                      )}
-                    </td>
-                  </tr>
+                  {instMode === "total" ? (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">Betrag pro Rate</td>
+                      <td className="px-4 py-3">
+                        {gesamtbetrag > 0 && numberOfRates >= 1 ? (
+                          <span className="font-semibold tabular-nums">
+                            {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">Wird berechnet…</span>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">Gesamtbetrag</td>
+                      <td className="px-4 py-3">
+                        {rateAmount > 0 && numberOfRates >= 1 ? (
+                          <span className="font-semibold tabular-nums">
+                            {fmt(computedInstTotal)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">Wird berechnet…</span>
+                        )}
+                      </td>
+                    </tr>
+                  )}
                   <tr>
                     <td className="px-4 py-3 text-muted-foreground">Zahlart / Kündigungsfrist</td>
                     <td className="px-4 py-3">
@@ -797,23 +901,68 @@ export function DealForm({ platforms, products, closers }: DealFormProps) {
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
           Team
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="closer_id">Closer</Label>
+        <div className="space-y-2">
+          <Label>Closer / Vertrieb</Label>
+          <div className="flex gap-1 mb-2">
+            {(["closer", "partner", "manual"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setCloserMode(mode);
+                  if (mode !== "closer") { setCloserId(""); }
+                  if (mode !== "partner") { setSalesPartnerId(""); }
+                  if (mode !== "manual") { setCloserManual(""); }
+                }}
+                className={cn(
+                  "rounded px-2.5 py-1 text-xs font-medium transition-colors border",
+                  closerMode === mode
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {mode === "closer" ? "Closer" : mode === "partner" ? "Vertriebspartner" : "Freitext"}
+              </button>
+            ))}
+          </div>
+          {closerMode === "closer" && (
+            <>
+              <select
+                id="closer_id"
+                name="closer_id"
+                value={closerId}
+                onChange={(e) => handleCloserChange(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">— keine —</option>
+                {closers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <FieldError msg={fe.closer_id?.[0]} />
+            </>
+          )}
+          {closerMode === "partner" && (
             <select
-              id="closer_id"
-              name="closer_id"
-              value={closerId}
-              onChange={(e) => handleCloserChange(e.target.value)}
+              name="sales_partner_id"
+              value={salesPartnerId}
+              onChange={(e) => setSalesPartnerId(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">— keine —</option>
-              {closers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              {salesPartners.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <FieldError msg={fe.closer_id?.[0]} />
-          </div>
+          )}
+          {closerMode === "manual" && (
+            <Input
+              name="closer_manual"
+              placeholder="Name des Closers / Vertriebspartners"
+              value={closerManual}
+              onChange={(e) => setCloserManual(e.target.value)}
+            />
+          )}
         </div>
       </section>
 

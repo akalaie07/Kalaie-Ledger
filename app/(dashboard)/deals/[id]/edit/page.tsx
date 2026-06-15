@@ -6,7 +6,7 @@ import { ChevronLeft } from "lucide-react";
 import { requireRole } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { DealEditForm } from "./_components/deal-edit-form";
-import { type ProductOption } from "../../new/_components/deal-form";
+import { type ProductOption, type PartnerOption } from "../../new/_components/deal-form";
 import { DeleteDealButton } from "./_components/delete-deal-button";
 
 export const metadata: Metadata = { title: "Deal bearbeiten — Buchhaltung" };
@@ -21,7 +21,7 @@ export default async function DealEditPage({
   const session = await requireRole("admin");
   const supabase = await createClient();
 
-  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: oneTime }, { data: installments }] =
+  const [{ data: deal }, { data: platforms }, { data: products }, { data: closers }, { data: salesPartners }, { data: oneTime }, { data: installments }] =
     await Promise.all([
       supabase
         .from("deals")
@@ -42,6 +42,12 @@ export default async function DealEditPage({
         .order("name"),
       supabase
         .from("closers")
+        .select("id, name")
+        .eq("organization_id", session.organizationId)
+        .eq("active", true)
+        .order("name"),
+      supabase
+        .from("sales_partners")
         .select("id, name")
         .eq("organization_id", session.organizationId)
         .eq("active", true)
@@ -87,6 +93,7 @@ export default async function DealEditPage({
         platforms={platforms ?? []}
         products={selectableProducts as unknown as ProductOption[]}
         closers={closers ?? []}
+        salesPartners={(salesPartners ?? []) as PartnerOption[]}
         initial={{
           customer_name: deal.customer_name,
           order_id: deal.order_id,
@@ -104,6 +111,8 @@ export default async function DealEditPage({
           storniert: (deal as { storniert?: boolean }).storniert ?? false,
           notes: deal.notes,
           closer_id: deal.closer_id,
+          sales_partner_id: deal.sales_partner_id ?? null,
+          closer_manual: (deal as { closer_manual?: string | null }).closer_manual ?? null,
           down_payment: deal.down_payment ?? null,
           one_time_due_date: oneTime?.due_date ?? null,
           reg_fee_paid: oneTime?.paid ?? false,

@@ -58,7 +58,7 @@ export default async function DealDetailPage({
   const { data: deal } = await supabase
     .from("deals")
     .select(
-      "*, platforms(name), products(name), closers(name)",
+      "*, platforms(name), products(name), closers(name), sales_partners(name)",
     )
     .eq("id", id)
     .eq("organization_id", session.organizationId)
@@ -140,7 +140,15 @@ export default async function DealDetailPage({
         <Row label="Produkt" value={d.products?.name} />
         <Row label="Plattform" value={d.platforms?.name} />
         <Row label="Zahlart" value={d.payment_method} />
-        <Row label="Closer" value={d.closers?.name} />
+        <Row
+          label="Closer"
+          value={
+            d.closers?.name ??
+            (d as { sales_partners?: { name: string } | null }).sales_partners?.name ??
+            (d as { closer_manual?: string | null }).closer_manual ??
+            undefined
+          }
+        />
         <Row
           label="Gesamtpreis"
           value={
@@ -153,23 +161,36 @@ export default async function DealDetailPage({
           }
         />
         {d.is_upsell && d.upsell_amount != null && (
-          <Row
-            label="Upsell"
-            value={
-              <span className="tabular-nums">
-                {new Intl.NumberFormat("de-DE", {
-                  style: "currency",
-                  currency: "EUR",
-                }).format(d.upsell_amount)}{" "}
-                <span className={d.upsell_paid ? "text-emerald-400" : "text-amber-400"}>
-                  ({d.upsell_paid ? "bezahlt" : "offen"})
+          <>
+            <Row
+              label="Upsell"
+              value={
+                <span className="tabular-nums">
+                  {new Intl.NumberFormat("de-DE", {
+                    style: "currency",
+                    currency: "EUR",
+                  }).format(d.upsell_amount)}{" "}
+                  <span className={d.upsell_paid ? "text-emerald-400" : "text-amber-400"}>
+                    ({d.upsell_paid ? "bezahlt" : "offen"})
+                  </span>
+                  {d.upsell_order_id && (
+                    <span className="text-muted-foreground"> · #{d.upsell_order_id}</span>
+                  )}
                 </span>
-                {d.upsell_order_id && (
-                  <span className="text-muted-foreground"> · #{d.upsell_order_id}</span>
-                )}
-              </span>
-            }
-          />
+              }
+            />
+            <Row
+              label="Gesamt (inkl. Upsell)"
+              value={
+                <span className="font-semibold tabular-nums">
+                  {new Intl.NumberFormat("de-DE", {
+                    style: "currency",
+                    currency: "EUR",
+                  }).format(d.total_price + d.upsell_amount)}
+                </span>
+              }
+            />
+          </>
         )}
         {d.down_payment != null && (
           <Row
@@ -282,6 +303,7 @@ export default async function DealDetailPage({
           payments={(subscriptionPayments ?? []) as SubPaymentRow[]}
           defaultAmount={(d as { recurring_amount?: number | null }).recurring_amount ?? 0}
           interval={d.payment_type === "subscription_monthly" ? "monthly" : "yearly"}
+          isAdmin={isAdmin}
         />
       )}
 

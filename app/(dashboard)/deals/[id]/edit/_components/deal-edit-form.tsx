@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 
 import { updateDeal, type DealFormState } from "@/lib/actions/deals";
-import { type ProductOption } from "@/app/(dashboard)/deals/new/_components/deal-form";
+import { type ProductOption, type PartnerOption } from "@/app/(dashboard)/deals/new/_components/deal-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ interface DealEditFormProps {
   platforms: Option[];
   products: ProductOption[];
   closers: Option[];
+  salesPartners: PartnerOption[];
   initial: {
     customer_name: string;
     order_id: string | null;
@@ -35,6 +36,8 @@ interface DealEditFormProps {
     storniert: boolean;
     notes: string | null;
     closer_id: string | null;
+    sales_partner_id: string | null;
+    closer_manual: string | null;
     down_payment: number | null;
     one_time_due_date: string | null;
     recurring_amount: number | null;
@@ -66,7 +69,7 @@ function paymentTypeToModel(pt: string): PaymentModel {
   return "einmalig";
 }
 
-export function DealEditForm({ dealId, platforms, products, closers, initial }: DealEditFormProps) {
+export function DealEditForm({ dealId, platforms, products, closers, salesPartners, initial }: DealEditFormProps) {
   const updateDealWithId = updateDeal.bind(null, dealId);
   const [state, action, pending] = useActionState<DealFormState, FormData>(updateDealWithId, null);
 
@@ -117,6 +120,11 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   );
   const [numberOfRates, setNumberOfRates] = useState(initial.inst_count ?? 0);
   const [firstDueDate, setFirstDueDate] = useState(initial.first_due_date ?? "");
+  const [instMode, setInstMode] = useState<"total" | "rate">("total");
+  const [rateAmount, setRateAmount] = useState(
+    initial.payment_type === "installments" && initial.inst_count && initial.inst_count > 0 && initial.inst_amount
+      ? initial.inst_amount : 0,
+  );
 
   // ── Anzahlung (shared EZ + Raten) ──
   const [hasAnzahlung, setHasAnzahlung] = useState(initHasAnzahlung);
@@ -137,6 +145,13 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   // ── Shared ──
   const [closeDate, setCloseDate] = useState(initial.close_date);
   const [closerId, setCloserId] = useState(initial.closer_id ?? "");
+  const [closerMode, setCloserMode] = useState<"closer" | "partner" | "manual">(() => {
+    if (initial.closer_manual) return "manual";
+    if (initial.sales_partner_id) return "partner";
+    return "closer";
+  });
+  const [closerManual, setCloserManual] = useState(initial.closer_manual ?? "");
+  const [salesPartnerId, setSalesPartnerId] = useState(initial.sales_partner_id ?? "");
   const [paymentMethod, setPaymentMethod] = useState(initial.payment_method ?? "");
 
   // ── Upsell + Begleitung ──
@@ -146,6 +161,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
   const [upsellAmount, setUpsellAmount] = useState(initial.upsell_amount ?? 0);
   const [upsellPaid, setUpsellPaid] = useState(initial.upsell_paid);
   const [coachingUntil, setCoachingUntil] = useState(initial.coaching_until ?? "");
+  const [isBefristet, setIsBefristet] = useState(initial.coaching_until != null);
 
   // ── localStorage: load per-dealId draft on mount ──
   useEffect(() => {
@@ -232,6 +248,7 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
       "downPaymentDate", "recurringAmount", "subscriptionStart", "paymentMethod",
       "regFeeChoice", "regFeeCustom", "isUpsell", "upsellOrderId", "coachingUntil",
       "upsellProductId", "upsellAmount", "upsellPaid",
+      "closerManual", "salesPartnerId",
     ];
     for (const key of keys) localStorage.removeItem(`kalaie_edit_${dealId}_${key}`);
   }
@@ -258,10 +275,12 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
     return "one_time";
   })();
 
+  const computedInstTotal =
+    instMode === "rate" && numberOfRates >= 1 ? rateAmount * numberOfRates : gesamtbetrag;
+
   const computedTotalPrice = (() => {
     if (paymentModel === "abo" && isSubscription) return effectiveRegFee;
-    if (paymentModel === "ratenzahlung")
-      return gesamtbetrag;
+    if (paymentModel === "ratenzahlung") return computedInstTotal;
     return einmaligBetrag;
   })();
 
@@ -474,22 +493,56 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
               </div>
             )}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="coaching_until">Begleitung läuft bis</Label>
-            <Input
-              id="coaching_until"
-              name="coaching_until"
-              type="date"
-              value={coachingUntil}
-              onChange={(e) => {
-                setCoachingUntil(e.target.value);
-                lsSave("coachingUntil", e.target.value);
-              }}
-            />
-            <p className="text-xs text-muted-foreground">
-              Läuft die Begleitung in ≤ 14 Tagen aus, erscheint der Deal unter „Begleitung".
-            </p>
-          </div>
+          {!isSubscription && (
+            <div className="space-y-1.5">
+              <Label>Begleitung befristet?</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsBefristet(false); setCoachingUntil(""); lsSave("coachingUntil", ""); }}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                    !isBefristet
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground",
+                  )}
+                >
+                  Nein
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBefristet(true)}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                    isBefristet
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground",
+                  )}
+                >
+                  Ja
+                </button>
+              </div>
+              {isBefristet && (
+                <>
+                  <Input
+                    id="coaching_until"
+                    name="coaching_until"
+                    type="date"
+                    value={coachingUntil}
+                    onChange={(e) => {
+                      setCoachingUntil(e.target.value);
+                      lsSave("coachingUntil", e.target.value);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Läuft die Begleitung in ≤ 14 Tagen aus, erscheint der Deal unter „Begleitung".
+                  </p>
+                </>
+              )}
+              {!isBefristet && <input type="hidden" name="coaching_until" value="" />}
+            </div>
+          )}
+          {isSubscription && <input type="hidden" name="coaching_until" value="" />}
         </div>
       </section>
 
@@ -706,7 +759,35 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
         {/* ── Ratenzahlung ── */}
         {paymentModel === "ratenzahlung" && (
           <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-4">
-            <h3 className="text-sm font-semibold">Ratenzahlung</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Ratenzahlung</h3>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setInstMode("total")}
+                  className={cn(
+                    "rounded px-2.5 py-1 text-xs font-medium transition-colors border",
+                    instMode === "total"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Gesamtpreis
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInstMode("rate")}
+                  className={cn(
+                    "rounded px-2.5 py-1 text-xs font-medium transition-colors border",
+                    instMode === "rate"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Rate eingeben
+                </button>
+              </div>
+            </div>
             <div className="rounded-md border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b border-border">
@@ -716,25 +797,41 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  <tr>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      Gesamtbetrag <span className="text-destructive">*</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        type="number" min="0" step="0.01" placeholder="0,00"
-                        value={gesamtbetrag || ""}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value) || 0;
-                          setGesamtbetrag(v);
-                          lsSave("gesamtbetrag", String(v));
-                        }}
-                        className="h-8 text-sm"
-                        aria-invalid={!!fe.total_price}
-                      />
-                      <FieldError msg={fe.total_price?.[0]} />
-                    </td>
-                  </tr>
+                  {instMode === "total" ? (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        Gesamtbetrag <span className="text-destructive">*</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Input
+                          type="number" min="0" step="0.01" placeholder="0,00"
+                          value={gesamtbetrag || ""}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value) || 0;
+                            setGesamtbetrag(v);
+                            lsSave("gesamtbetrag", String(v));
+                          }}
+                          className="h-8 text-sm"
+                          aria-invalid={!!fe.total_price}
+                        />
+                        <FieldError msg={fe.total_price?.[0]} />
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        Betrag pro Rate <span className="text-destructive">*</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Input
+                          type="number" min="0" step="0.01" placeholder="0,00"
+                          value={rateAmount || ""}
+                          onChange={(e) => setRateAmount(parseFloat(e.target.value) || 0)}
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                    </tr>
+                  )}
                   <tr>
                     <td className="px-4 py-3 text-muted-foreground">
                       Anzahl Raten <span className="text-destructive">*</span>
@@ -774,20 +871,33 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
                       <FieldError msg={fe.first_due_date?.[0]} />
                     </td>
                   </tr>
-                  <tr>
-                    <td className="px-4 py-3 text-muted-foreground">Betrag pro Rate</td>
-                    <td className="px-4 py-3">
-                      {gesamtbetrag > 0 && numberOfRates >= 1 ? (
-                        <span className="font-semibold tabular-nums">
-                          {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/50 text-xs">
-                          Wird berechnet…
-                        </span>
-                      )}
-                    </td>
-                  </tr>
+                  {instMode === "total" ? (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">Betrag pro Rate</td>
+                      <td className="px-4 py-3">
+                        {gesamtbetrag > 0 && numberOfRates >= 1 ? (
+                          <span className="font-semibold tabular-nums">
+                            {fmt((gesamtbetrag - (hasAnzahlung ? downPayment : 0)) / numberOfRates)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">Wird berechnet…</span>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground">Gesamtbetrag</td>
+                      <td className="px-4 py-3">
+                        {rateAmount > 0 && numberOfRates >= 1 ? (
+                          <span className="font-semibold tabular-nums">
+                            {fmt(computedInstTotal)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">Wird berechnet…</span>
+                        )}
+                      </td>
+                    </tr>
+                  )}
                   <tr>
                     <td className="px-4 py-3 text-muted-foreground">Zahlart / Kündigungsfrist</td>
                     <td className="px-4 py-3">
@@ -1030,26 +1140,71 @@ export function DealEditForm({ dealId, platforms, products, closers, initial }: 
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
           Team
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="closer_id">Closer</Label>
+        <div className="space-y-2">
+          <Label>Closer / Vertrieb</Label>
+          <div className="flex gap-1 mb-2">
+            {(["closer", "partner", "manual"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setCloserMode(mode);
+                  if (mode !== "closer") { setCloserId(""); lsSave("closerId", ""); }
+                  if (mode !== "partner") { setSalesPartnerId(""); }
+                  if (mode !== "manual") { setCloserManual(""); }
+                }}
+                className={cn(
+                  "rounded px-2.5 py-1 text-xs font-medium transition-colors border",
+                  closerMode === mode
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {mode === "closer" ? "Closer" : mode === "partner" ? "Vertriebspartner" : "Freitext"}
+              </button>
+            ))}
+          </div>
+          {closerMode === "closer" && (
+            <>
+              <select
+                id="closer_id"
+                name="closer_id"
+                value={closerId}
+                onChange={(e) => {
+                  setCloserId(e.target.value);
+                  lsSave("closerId", e.target.value);
+                }}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">— keine —</option>
+                {closers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <FieldError msg={fe.closer_id?.[0]} />
+            </>
+          )}
+          {closerMode === "partner" && (
             <select
-              id="closer_id"
-              name="closer_id"
-              value={closerId}
-              onChange={(e) => {
-                setCloserId(e.target.value);
-                lsSave("closerId", e.target.value);
-              }}
+              name="sales_partner_id"
+              value={salesPartnerId}
+              onChange={(e) => setSalesPartnerId(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">— keine —</option>
-              {closers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              {salesPartners.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <FieldError msg={fe.closer_id?.[0]} />
-          </div>
+          )}
+          {closerMode === "manual" && (
+            <Input
+              name="closer_manual"
+              placeholder="Name des Closers / Vertriebspartners"
+              value={closerManual}
+              onChange={(e) => setCloserManual(e.target.value)}
+            />
+          )}
         </div>
       </section>
 

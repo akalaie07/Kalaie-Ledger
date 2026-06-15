@@ -377,6 +377,7 @@ export type Database = {
           upsell_paid: boolean;
           coaching_until: string | null;
           coaching_done: boolean;
+          closer_manual: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -392,6 +393,7 @@ export type Database = {
           order_id?: string | null;
           sales_partner_id?: string | null;
           closer_id?: string | null;
+          closer_manual?: string | null;
           total_price: number;
           payment_type?: Database["public"]["Enums"]["payment_type_enum"];
           close_date: string;
@@ -427,6 +429,7 @@ export type Database = {
           order_id?: string | null;
           sales_partner_id?: string | null;
           closer_id?: string | null;
+          closer_manual?: string | null;
           total_price?: number;
           payment_type?: Database["public"]["Enums"]["payment_type_enum"];
           close_date?: string;

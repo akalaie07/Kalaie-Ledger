@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Gavel,
   Clock,
+  UserCheck,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ interface SidebarProps {
   organizationId: string;
   initialMembers: Member[];
   coachingCount: number;
+  formerCount: number;
 }
 
 // ─── Nav-Typen ────────────────────────────────────────────────────────────────
@@ -87,6 +89,7 @@ const sidebarEntries: SidebarEntry[] = [
       { href: "/deals", label: "Deals", icon: FileText, roles: ["admin", "closer", "sales_partner"] },
       { href: "/deals/new", label: "Neuer Deal", icon: PlusCircle, roles: ["admin", "closer", "sales_partner"] },
       { href: "/deals/begleitung", label: "Begleitung", icon: Clock, roles: ["admin", "closer", "sales_partner"] },
+      { href: "/deals/ehemalige-kunden", label: "Ehemalige Kunden", icon: UserCheck, roles: ["admin"] },
     ],
   },
 
@@ -197,6 +200,7 @@ export function Sidebar({
   organizationId,
   initialMembers,
   coachingCount,
+  formerCount,
 }: SidebarProps) {
   const pathname = usePathname();
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -265,7 +269,13 @@ export function Sidebar({
                 label={item.label}
                 icon={item.icon}
                 active={isActive(item.href)}
-                badge={item.href === "/deals/begleitung" ? coachingCount : undefined}
+                badge={
+                  item.href === "/deals/begleitung"
+                    ? coachingCount
+                    : item.href === "/deals/ehemalige-kunden"
+                      ? formerCount
+                      : undefined
+                }
               />
             ))}
           </div>

@@ -4,8 +4,8 @@ import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { Plus, Check, Clock, Pencil, X } from "lucide-react";
-import { addSubscriptionPayment, toggleSubscriptionPayment, updateSubscriptionPayment } from "@/lib/actions/deals";
+import { Plus, Check, Clock, Pencil, X, Trash2 } from "lucide-react";
+import { addSubscriptionPayment, toggleSubscriptionPayment, updateSubscriptionPayment, deleteSubscriptionPayment } from "@/lib/actions/deals";
 
 const fmt = (v: number) =>
   new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(v);
@@ -23,11 +23,13 @@ export function SubscriptionTracker({
   payments,
   defaultAmount,
   interval,
+  isAdmin,
 }: {
   dealId: string;
   payments: Payment[];
   defaultAmount: number;
   interval: "monthly" | "yearly";
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -84,6 +86,15 @@ export function SubscriptionTracker({
       const res = await updateSubscriptionPayment(editingId, dealId, editDate, editAmount);
       if (res.error) setError(res.error);
       else { setEditingId(null); router.refresh(); }
+    });
+  }
+
+  function handleDelete(paymentId: string) {
+    if (!window.confirm("Diese unbezahlte Zahlung löschen?")) return;
+    startTransition(async () => {
+      const res = await deleteSubscriptionPayment(paymentId, dealId);
+      if (res.error) setError(res.error);
+      else router.refresh();
     });
   }
 
@@ -161,7 +172,7 @@ export function SubscriptionTracker({
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Datum</th>
               <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Betrag</th>
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-2.5 w-8" />
+              <th className="px-4 py-2.5 w-16" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -194,14 +205,26 @@ export function SubscriptionTracker({
                     </button>
                   </td>
                   <td className="px-2 py-2.5">
-                    <button
-                      onClick={() => editingId === p.id ? setEditingId(null) : startEdit(p)}
-                      disabled={pending}
-                      title="Bearbeiten"
-                      className="rounded p-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors disabled:opacity-50"
-                    >
-                      {editingId === p.id ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                    </button>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => editingId === p.id ? setEditingId(null) : startEdit(p)}
+                        disabled={pending}
+                        title="Bearbeiten"
+                        className="rounded p-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors disabled:opacity-50"
+                      >
+                        {editingId === p.id ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                      </button>
+                      {isAdmin && !p.paid && (
+                        <button
+                          onClick={() => handleDelete(p.id)}
+                          disabled={pending}
+                          title="Löschen"
+                          className="rounded p-1 text-muted-foreground/40 hover:text-rose-400 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
                 {editingId === p.id && (
