@@ -21,12 +21,10 @@ const uuidOpt = z.preprocess(
   z.string().uuid().nullable(),
 );
 
-const optDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Ungültiges Datum.")
-  .optional()
-  .nullable()
-  .transform((v) => v || null);
+const optDate = z.preprocess(
+  (v) => (v === "" || v == null ? null : v),
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ungültiges Datum.").nullable(),
+);
 
 const DealSchema = z.object({
   customer_name: z.string().min(1, "Pflichtfeld.").trim(),
