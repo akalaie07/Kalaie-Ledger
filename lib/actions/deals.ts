@@ -134,6 +134,22 @@ const DealSchema = z.object({
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Übersetzt DB-Fehler beim Speichern eines Deals in eine verständliche Meldung.
+// Spezialfall: Bestell-ID-Kollision (deals_order_per_org_uk) — pro Organisation
+// darf eine Bestell-ID nur einmal vorkommen.
+function dealSaveError(
+  error: { code?: string; message: string } | null,
+  fallback: string,
+  orderId?: string | null,
+): string {
+  if (error?.code === "23505" && error.message.includes("deals_order_per_org_uk")) {
+    return orderId
+      ? `Es gibt bereits einen Deal mit der Bestell-ID „${orderId}". Bestell-IDs müssen pro Organisation eindeutig sein — bitte die Bestell-ID anpassen oder leer lassen.`
+      : "Es gibt bereits einen Deal mit dieser Bestell-ID. Bestell-IDs müssen pro Organisation eindeutig sein.";
+  }
+  return error?.message ? `${fallback}: ${error.message}` : fallback;
+}
+
 function generateInstallments(
   dealId: string,
   orgId: string,
@@ -237,9 +253,7 @@ export async function createDeal(
 
   if (error || !deal) {
     return {
-      error: error?.message
-        ? `Deal konnte nicht gespeichert werden: ${error.message}`
-        : "Deal konnte nicht gespeichert werden.",
+      error: dealSaveError(error, "Deal konnte nicht gespeichert werden.", dealFields.order_id),
     };
   }
 
@@ -348,7 +362,7 @@ export async function updateDeal(
 
   if (error)
     return {
-      error: `Änderungen konnten nicht gespeichert werden: ${error.message}`,
+      error: dealSaveError(error, "Änderungen konnten nicht gespeichert werden.", dealFields.order_id),
     };
 
   // ── Zahlungs-Records mit dem (ggf. gewechselten) Zahlungsmodell abgleichen ──
