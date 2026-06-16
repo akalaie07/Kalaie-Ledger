@@ -33,6 +33,9 @@ export type DealRowData = {
   storniert: boolean;
   onboarding_done: boolean;
   update_call_done: boolean;
+  is_upsell: boolean;
+  upsell_amount: number | null;
+  upsell_paid: boolean;
   otp_paid: boolean | null;
   inst_total: number;
   inst_paid: number;
@@ -474,6 +477,11 @@ export function DealsTable({
                             </>
                           );
                         })()
+                      )}
+                      {deal.is_upsell && deal.upsell_amount != null && deal.upsell_amount > 0 && (
+                        <p className={cn("text-xs font-medium", deal.upsell_paid ? "text-emerald-400" : "text-rose-400")}>
+                          + Upsell {fmt(deal.upsell_amount)} {deal.upsell_paid ? "bezahlt" : "offen"}
+                        </p>
                       )}
                     </Link>
                   </td>

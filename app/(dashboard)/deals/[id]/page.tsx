@@ -9,9 +9,10 @@ import { requireSession } from "@/lib/auth/get-current-org";
 import { createClient } from "@/lib/supabase/server";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { InstallmentToggle, OneTimeToggle } from "./_components/payment-toggle";
+import { OneTimeToggle } from "./_components/payment-toggle";
 import { AddInstallmentsForm } from "./_components/add-installments-form";
 import { SubscriptionTracker } from "./_components/subscription-tracker";
+import { InstallmentsTracker } from "./_components/installments-tracker";
 
 export const metadata: Metadata = { title: "Deal — Buchhaltung" };
 
@@ -248,8 +249,14 @@ export default async function DealDetailPage({
         {d.notes && <Row label="Notizen" value={d.notes} />}
       </div>
 
-      {/* Zahlung / Anzahlung status — für Einmalzahlung und Ratenzahlung mit Anzahlung */}
-      {!isSubscription && oneTime && (
+      {/* Zahlung / Anzahlung status — für Einmalzahlung immer, für Ratenzahlung
+          nur bei tatsächlicher Anzahlung (down_payment). Verhindert, dass ein
+          verwaister one_time_payment-Record (z.B. aus Import) fälschlich als
+          „Anzahlung bezahlt" erscheint, obwohl keine Anzahlung vereinbart war. */}
+      {!isSubscription &&
+        oneTime &&
+        (d.payment_type === "one_time" ||
+          (d.down_payment != null && d.down_payment > 0)) && (
         <div className="rounded-lg border border-border p-4 space-y-3">
           <h2 className="text-sm font-semibold">
             {d.payment_type === "one_time" ? "Zahlung" : "Anzahlung"}
@@ -318,47 +325,11 @@ export default async function DealDetailPage({
 
       {/* Installments table */}
       {d.payment_type === "installments" && installments && installments.length > 0 && (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">
-              Raten ({installments.filter((r) => r.paid).length}/
-              {installments.length} bezahlt)
-            </h2>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="border-b border-border bg-muted/40">
-              <tr>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">#</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Fällig</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Betrag</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(installments as InstallmentRow[]).map((r) => (
-                <tr key={r.id} className="hover:bg-muted/20">
-                  <td className="px-4 py-2.5 text-muted-foreground">{r.sequence}</td>
-                  <td className="px-4 py-2.5 tabular-nums">
-                    {format(new Date(r.due_date), "dd.MM.yyyy", { locale: de })}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-medium">
-                    {new Intl.NumberFormat("de-DE", {
-                      style: "currency",
-                      currency: "EUR",
-                    }).format(r.amount)}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <InstallmentToggle
-                      installmentId={r.id}
-                      dealId={id}
-                      paid={r.paid}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <InstallmentsTracker
+          dealId={id}
+          installments={installments as InstallmentRow[]}
+          isAdmin={isAdmin}
+        />
       )}
     </div>
   );

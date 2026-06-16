@@ -93,7 +93,7 @@ export default async function DealsPage({
     supabase
       .from("deals")
       .select(
-        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, chargeback, storniert, onboarding_done, update_call_done, order_id, notes, down_payment, recurring_amount, platforms(name), products(name, product_type), closers(name)",
+        "id, customer_name, total_price, payment_type, close_date, mahnung_required, inkasso_required, chargeback, storniert, onboarding_done, update_call_done, order_id, notes, down_payment, recurring_amount, is_upsell, upsell_amount, upsell_paid, platforms(name), products(name, product_type), closers(name)",
       )
       .eq("organization_id", session.organizationId)
       .order("close_date", { ascending: false }),
@@ -280,6 +280,9 @@ export default async function DealsPage({
       onboarding_done: d.onboarding_done ?? false,
       update_call_done: (d.update_call_done as boolean) ?? false,
       recurring_amount: (d.recurring_amount as number | null) ?? null,
+      is_upsell: (da.is_upsell as boolean) ?? false,
+      upsell_amount: (da.upsell_amount as number | null) ?? null,
+      upsell_paid: (da.upsell_paid as boolean) ?? false,
       otp_paid: (d.payment_type === "one_time" || d.payment_type === "subscription_monthly" || d.payment_type === "subscription_yearly")
         ? (otpMap.get(d.id) ?? false)
         : null,

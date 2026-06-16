@@ -741,6 +741,60 @@ export async function markInstallmentPaid(
 }
 
 // ---------------------------------------------------------------------------
+// updateInstallment — Datum / Betrag einer Rate bearbeiten
+// ---------------------------------------------------------------------------
+
+export async function updateInstallment(
+  installmentId: string,
+  dealId: string,
+  dueDate: string,
+  amount: number,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return { error: "Ungültiges Datum." };
+  if (!(amount >= 0)) return { error: "Betrag muss ≥ 0 sein." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("installments")
+    .update({ due_date: dueDate, amount })
+    .eq("id", installmentId)
+    .eq("deal_id", dealId)
+    .eq("organization_id", session.organizationId);
+
+  if (error) return { error: "Rate konnte nicht aktualisiert werden." };
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// deleteInstallment — unbezahlte Rate löschen
+// ---------------------------------------------------------------------------
+
+export async function deleteInstallment(
+  installmentId: string,
+  dealId: string,
+): Promise<{ error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "Nicht angemeldet." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("installments")
+    .delete()
+    .eq("id", installmentId)
+    .eq("deal_id", dealId)
+    .eq("organization_id", session.organizationId)
+    .eq("paid", false);
+
+  if (error) return { error: "Rate konnte nicht gelöscht werden." };
+  revalidatePath(`/deals/${dealId}`);
+  return {};
+}
+
+// ---------------------------------------------------------------------------
 // markOneTimePaid / unmarkOneTimePaid
 // ---------------------------------------------------------------------------
 

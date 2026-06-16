@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Sparkles } from "lucide-react";
 
-const RELEASE_KEY = "kalaie_whats_new_2026-06-15";
+const RELEASE_KEY = "kalaie_whats_new_2026-06-16";
 
 export function WhatsNewBanner() {
   const [visible, setVisible] = useState(false);
@@ -29,7 +29,7 @@ export function WhatsNewBanner() {
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold mb-2">Update vom 15. Juni 2026 — Was ist neu?</p>
+          <p className="text-sm font-semibold mb-2">Update vom 16. Juni 2026 — Was ist neu?</p>
 
           <div className="grid gap-x-8 gap-y-0.5 sm:grid-cols-2 text-sm">
             <div>
@@ -37,15 +37,15 @@ export function WhatsNewBanner() {
               <ul className="space-y-0.5 text-muted-foreground">
                 <li className="flex gap-2">
                   <span className="text-emerald-400 shrink-0">✓</span>
-                  Deals speichern wieder möglich
+                  Speichern-Problem bei Deals endgültig behoben
                 </li>
                 <li className="flex gap-2">
                   <span className="text-emerald-400 shrink-0">✓</span>
-                  Upsell-Gesamtbetrag auf der Detailseite sichtbar
+                  Anzahlung wird nur noch angezeigt, wenn auch eine vereinbart wurde
                 </li>
                 <li className="flex gap-2">
                   <span className="text-emerald-400 shrink-0">✓</span>
-                  Offene Abo-Zahlungen bei stornierten Deals löschbar
+                  Bezahlter Upsell jetzt auch in der Deals-Liste sichtbar
                 </li>
               </ul>
             </div>
@@ -55,19 +55,7 @@ export function WhatsNewBanner() {
               <ul className="space-y-0.5 text-muted-foreground">
                 <li className="flex gap-2">
                   <span className="text-primary shrink-0">+</span>
-                  Begleitung: Toggle „Befristet / Unbefristet" — bei Abos ausgeblendet
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-primary shrink-0">+</span>
-                  Ratenzahlung: Modus „Rate eingeben" — Gesamtpreis wird berechnet
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-primary shrink-0">+</span>
-                  Closer: wählbar als Closer, Vertriebspartner oder Freitext
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-primary shrink-0">+</span>
-                  Neue Seite „Ehemalige Kunden" in der Sidebar
+                  Einzelne Raten direkt bearbeiten (Stift) und löschen (Papierkorb)
                 </li>
               </ul>
             </div>
