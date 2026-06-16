@@ -236,7 +236,11 @@ export async function createDeal(
     .single();
 
   if (error || !deal) {
-    return { error: "Deal konnte nicht gespeichert werden." };
+    return {
+      error: error?.message
+        ? `Deal konnte nicht gespeichert werden: ${error.message}`
+        : "Deal konnte nicht gespeichert werden.",
+    };
   }
 
   if (dealFields.payment_type === "one_time") {
@@ -342,7 +346,10 @@ export async function updateDeal(
     .eq("id", id)
     .eq("organization_id", session.organizationId);
 
-  if (error) return { error: "Änderungen konnten nicht gespeichert werden." };
+  if (error)
+    return {
+      error: `Änderungen konnten nicht gespeichert werden: ${error.message}`,
+    };
 
   // ── Zahlungs-Records mit dem (ggf. gewechselten) Zahlungsmodell abgleichen ──
   // Beim Modell-Wechsel werden verwaiste UNbezahlte Records der anderen Modelle
